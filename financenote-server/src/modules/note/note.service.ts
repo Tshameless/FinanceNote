@@ -1,0 +1,120 @@
+/**
+ * 笔记与高亮划线服务实现 (NoteService)
+ * 
+ * 包含：
+ * 1. 笔记 CRUD
+ * 2. 高亮划线坐标存取 (Annotations)
+ */
+
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { NoteEntity } from './entities/note.entity';
+import { AnnotationEntity } from './entities/annotation.entity';
+import { CreateNoteDto, CreateAnnotationDto } from './dto/create-note.dto';
+
+@Injectable()
+export class NoteService {
+  constructor(
+    @InjectRepository(NoteEntity)
+    private noteRepository: Repository<NoteEntity>,
+    @InjectRepository(AnnotationEntity)
+    private annotationRepository: Repository<AnnotationEntity>,
+  ) {}
+
+  /**
+   * 创建新笔记
+   */
+  async createNote(userId: number, dto: CreateNoteDto): Promise<NoteEntity> {
+    const note = this.noteRepository.create({
+      userId,
+      title: dto.title,
+      content: dto.content || '',
+      docId: dto.docId,
+      tags: dto.tags || [],
+    });
+    return this.noteRepository.save(note);
+  }
+
+  /**
+   * 获取指定用户的笔记列表
+   */
+  async getUserNotes(userId: number, docId?: string): Promise<NoteEntity[]> {
+    const query = this.noteRepository.createQueryBuilder('note')
+      .where('note.userId = :userId', { userId });
+
+    if (docId) {
+      query.andWhere('note.docId = :docId', { docId });
+    }
+
+    return query.orderBy('note.updatedAt', 'DESC').getMany();
+  }
+
+  /**
+   * 获取单个笔记详情 (带高亮标注)
+   */
+  async getNoteDetail(id: string, userId: number): Promise<NoteEntity> {
+    const note = await this.noteRepository.findOne({
+      where: { id },
+      relations: ['annotations'],
+    });
+
+    if (!note) {
+      throw new NotFoundException(`ID 为 ${id} 的笔记不存在`);
+    }
+
+    if (note.userId !== userId) {
+      throw new ForbiddenException('警告：您无权查看他人的私有笔记！');
+    }
+
+    return note;
+  }
+
+  /**
+   * 更新笔记
+   */
+  async updateNote(id: string, userId: number, dto: Partial<CreateNoteDto>): Promise<NoteEntity> {
+    const note = await this.getNoteDetail(id, userId);
+    if (dto.title !== undefined) note.title = dto.title;
+    if (dto.content !== undefined) note.content = dto.content;
+    if (dto.tags !== undefined) note.tags = dto.tags;
+    return this.noteRepository.save(note);
+  }
+
+  /**
+   * 删除笔记
+   */
+  async deleteNote(id: string, userId: number): Promise<void> {
+    const note = await this.getNoteDetail(id, userId);
+    await this.noteRepository.remove(note);
+  }
+
+  // ================= 划线标注 (Annotations) 方法 =================
+
+  /**
+   * 保存 PDF 原文选框与高亮
+   */
+  async createAnnotation(userId: number, dto: CreateAnnotationDto): Promise<AnnotationEntity> {
+    const annotation = this.annotationRepository.create({
+      userId,
+      docId: dto.docId,
+      noteId: dto.noteId,
+      pageNum: dto.pageNum,
+      rectCoords: dto.rectCoords,
+      selectedText: dto.selectedText,
+      color: dto.color || '#ffeb3b',
+      comment: dto.comment,
+    });
+    return this.annotationRepository.save(annotation);
+  }
+
+  /**
+   * 按文档 ID 获取所有高亮划线
+   */
+  async getDocumentAnnotations(docId: string, userId: number): Promise<AnnotationEntity[]> {
+    return this.annotationRepository.find({
+      where: { docId, userId },
+      order: { pageNum: 'ASC', createdAt: 'ASC' },
+    });
+  }
+}

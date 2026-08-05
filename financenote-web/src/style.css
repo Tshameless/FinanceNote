@@ -1,0 +1,91 @@
+/* FinanceNote 设计系统与全局 Style CSS */
+
+:root {
+  --fn-bg-dark: #0f172a;
+  --fn-bg-card: #1e293b;
+  --fn-bg-card-hover: #334155;
+  --fn-border-color: #334155;
+  
+  --fn-primary: #6366f1;
+  --fn-primary-hover: #4f46e5;
+  --fn-secondary: #06b6d4;
+  --fn-accent-gold: #f59e0b;
+  --fn-success: #10b981;
+  --fn-danger: #ef4444;
+
+  --fn-text-main: #f8fafc;
+  --fn-text-muted: #94a3b8;
+  --fn-text-dim: #64748b;
+
+  --fn-radius-sm: 6px;
+  --fn-radius-md: 10px;
+  --fn-radius-lg: 16px;
+
+  --fn-shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --fn-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --fn-font-display: 'Outfit', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--fn-font-sans);
+  background-color: var(--fn-bg-dark);
+  color: var(--fn-text-main);
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 玻璃拟态 Card 通用样式 */
+.fn-glass-card {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--fn-radius-md);
+  box-shadow: var(--fn-shadow-glass);
+}
+
+/* 渐变标题 */
+.fn-gradient-title {
+  font-family: var(--fn-font-display);
+  background: linear-gradient(135deg, #6366f1 0%, #06b6d4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Element Plus 暗黑皮肤微调 */
+.el-card {
+  background-color: var(--fn-bg-card) !important;
+  border-color: var(--fn-border-color) !important;
+  color: var(--fn-text-main) !important;
+}
+
+.el-button--primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+  border: none !important;
+}
