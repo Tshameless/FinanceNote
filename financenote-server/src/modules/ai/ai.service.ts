@@ -157,9 +157,10 @@ export class AiService {
 文档参考上下文:
 ${contextPrompt || '暂无查找到相关切块'}`;
 
-      // Step 3: 调用商用 LLM 流式输出 (DeepSeek-V3/R1)
+      // Step 3: 调用商用 LLM 流式输出 (商汤 SenseNova / DeepSeek)
+      const modelName = this.configService.get<string>('AI_MODEL_NAME', 'sensenova-6.7-flash-lite');
       const responseStream = await this.openaiClient.chat.completions.create({
-        model: 'deepseek-chat',
+        model: modelName,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: query },
