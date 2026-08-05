@@ -14,6 +14,11 @@ export class RagQueryDto {
   @IsString()
   query: string;
 
+  @ApiPropertyOptional({ description: '当前处于的 PDF 物理页码 (优先检索当前页及附近页)', example: 42 })
+  @IsOptional()
+  @IsInt()
+  currentPage?: number;
+
   @ApiPropertyOptional({ description: '检索最大切块数量 (Top K)', example: 5, default: 5 })
   @IsOptional()
   @IsInt()

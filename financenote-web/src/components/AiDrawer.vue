@@ -115,6 +115,7 @@ import { streamAiAnswerFetch, SourceInfo } from '../api/ai';
 
 const props = defineProps<{
   docId: string;
+  currentPage?: number;
 }>();
 
 const emit = defineEmits<{
@@ -148,6 +149,7 @@ function handleSend() {
   streamAiAnswerFetch(
     props.docId,
     userQuery,
+    props.currentPage,
     (sources) => {
       messages.value[assistantMsgIndex].sources = sources;
     },

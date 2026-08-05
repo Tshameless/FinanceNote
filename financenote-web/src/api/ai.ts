@@ -1,10 +1,5 @@
 /**
- * AI 研读助手 SSE 流式传输 Fetch 请求类 (ai.ts)
- * 
- * 作用：
- * 由于 EventSource 默认无法添加 Authorization: Bearer <Token> 请求头，
- * 使用原生 fetch() API + ReadableStream 实例读取后端流式推送的数据，
- * 实现与前端与 NestJS SSE 控制器的优雅解包打字机通信。
+ * AI 研读助手 SSE 流式传输 Fetch 请求工具类 (ai.ts)
  */
 
 export interface SourceInfo {
@@ -15,6 +10,7 @@ export interface SourceInfo {
 export function streamAiAnswerFetch(
   docId: string,
   query: string,
+  currentPage: number | undefined,
   onSources: (sources: SourceInfo[]) => void,
   onChunk: (text: string) => void,
   onDone: () => void,
@@ -28,7 +24,7 @@ export function streamAiAnswerFetch(
       'Content-Type': 'application/json',
       Authorization: token ? `Bearer ${token}` : '',
     },
-    body: JSON.stringify({ docId, query, topK: 5 }),
+    body: JSON.stringify({ docId, query, currentPage, topK: 5 }),
   })
     .then((response) => {
       if (!response.ok) {
@@ -62,9 +58,7 @@ export function streamAiAnswerFetch(
                 } else if (parsed.type === 'error') {
                   onError(parsed.message);
                 }
-              } catch (e) {
-                // 自动忽略格式不全的中间 chunk
-              }
+              } catch (e) {}
             }
           }
           read();

@@ -133,6 +133,7 @@
               <AiDrawer
                 v-if="rightPanel === 'ai'"
                 :doc-id="docStore.activeDocument.id"
+                :current-page="pdfViewerRef?.currentPage || 1"
                 @on-jump-to-page="handleAiJumpToPage"
               />
               <NoteEditor

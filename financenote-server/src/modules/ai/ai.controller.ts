@@ -1,9 +1,5 @@
 /**
  * AI 研读助手控制器 (AiController)
- * 
- * 路由：
- * - POST /api/ai/stream : POST SSE 打字机流式打字输出 (HTTP 200 OK + 带 JWT 鉴权与出处页码)
- * - POST /api/ai/ask    : 检索上下文切块引用出处
  */
 
 import { Controller, Post, Body, Res, UseGuards, HttpCode } from '@nestjs/common';
@@ -49,15 +45,15 @@ export class AiController {
       },
     });
 
-    // 触发后台向量检索 RAG 问答与商汤 SenseNova 流式处理
-    this.aiService.askDocumentRAGStream(dto.docId, dto.query, dto.topK || 5, subject);
+    // 触发后台向量检索 RAG 问答与商汤 SenseNova 流式处理 (包含当前页码 dto.currentPage)
+    this.aiService.askDocumentRAGStream(dto.docId, dto.query, dto.topK || 5, subject, dto.currentPage);
   }
 
   @Post('ask')
   @HttpCode(200)
   @ApiOperation({ summary: '检索引用的出处页码列表 (查看 Context 出处)' })
   async getReferences(@Body() dto: RagQueryDto) {
-    const sources = await this.aiService.retrieveContextChunks(dto.docId, dto.query, dto.topK || 5);
+    const sources = await this.aiService.retrieveContextChunks(dto.docId, dto.query, dto.topK || 5, dto.currentPage);
     return { sources };
   }
 }

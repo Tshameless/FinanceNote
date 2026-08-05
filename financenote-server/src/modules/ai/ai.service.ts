@@ -1,10 +1,10 @@
 /**
  * AI 研读助手服务实现 (AiService)
  * 
- * 核心功能：
- * 1. 结合 MySQL 向量/全文关键字匹配检索最相关的切块段落与对应 [页码 pageNumber]
- * 2. 强指令提示词 (System Prompt)：要求 LLM 必须为每一个观点和数据标注 [第 X 页] 出处
- * 3. 通过 SSE 将包含 [页码] 的出处来源与增量文本推送至前端 Vue 3
+ * 核心优化：
+ * 1. 优先结合用户【当前处于的 PDF 页码 (currentPage)】进行上下文精准抽取，解决页码偏差 Bug
+ * 2. 引入停用词过滤 (过滤“什么是/总结一下/如何/怎么”)，锁定精准业务关键词
+ * 3. 强指令提示词 (System Prompt)：要求 LLM 严格依据提供的切块页码标注 [第 X 页] 出处
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -38,76 +38,97 @@ export class AiService {
   }
 
   /**
-   * 检索最相关的文本切块与对应页码
+   * 检索最相关的文本切块与对应物理页码
    */
-  async retrieveContextChunks(docId: string, query: string, topK = 5): Promise<SourceReference[]> {
-    try {
-      // 1. 尝试向量 Embedding 检索
-      const embedding = await this.generateEmbedding(query);
-      if (embedding && embedding.length > 0) {
-        const embeddingArrayStr = `[${embedding.join(',')}]`;
-        const rawResults = await this.dataSource.query(
+  async retrieveContextChunks(
+    docId: string,
+    query: string,
+    topK = 5,
+    currentPage?: number,
+  ): Promise<SourceReference[]> {
+    const results: SourceReference[] = [];
+
+    // 优先逻辑 A：若用户传入了当前视口页码 currentPage (例如 42 页)，优先抽取 42 页及其前后 2 页切块
+    if (currentPage && currentPage > 0) {
+      try {
+        const pageNearbyChunks = await this.dataSource.query(
           `SELECT id, content, pageNumber, metadata
            FROM document_chunks
-           WHERE docId = ?
-           ORDER BY embedding <=> ? ASC
-           LIMIT ?`,
-          [docId, embeddingArrayStr, topK],
+           WHERE docId = ? AND pageNumber BETWEEN ? AND ?
+           ORDER BY pageNumber ASC
+           LIMIT 4`,
+          [docId, Math.max(1, currentPage - 1), currentPage + 2],
         );
-        if (rawResults && rawResults.length > 0) {
-          return rawResults.map((r: any) => ({
-            pageNumber: Number(r.pageNumber || r.page_number || 1),
-            content: r.content,
-            metadata: r.metadata,
-          }));
+
+        if (pageNearbyChunks && pageNearbyChunks.length > 0) {
+          pageNearbyChunks.forEach((r: any) => {
+            results.push({
+              pageNumber: Number(r.pageNumber || 1),
+              content: r.content,
+              metadata: r.metadata,
+            });
+          });
         }
+      } catch (err) {
+        this.logger.warn(`按页码抽取切块警示: ${err.message}`);
       }
-    } catch (error) {
-      this.logger.warn(`向量检索不可用或提示: ${error.message}，自动降级为文本切块关键字匹配`);
     }
 
-    return this.fallbackKeywordSearch(docId, query, topK);
-  }
+    // 逻辑 B：中文停用词过滤提取核心搜索关键词
+    const stopWords = new Set(['请', '总结', '一下', '什么是', '如何', '怎么', '有哪些', '分析', '核心', '观点', '的', '是', '在', '和', '与', '这', '那', '有', '说明', '讲了', '意思']);
+    const rawTokens = query.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').split(/\s+/);
+    const keywords = rawTokens.filter((w) => w.length >= 2 && !stopWords.has(w));
 
-  /**
-   * 降级关键字与多词匹配检索
-   */
-  private async fallbackKeywordSearch(docId: string, query: string, topK: number): Promise<SourceReference[]> {
-    try {
-      // 提取提问关键词
-      const keywords = query.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 1);
-      const searchPattern = keywords.length > 0 ? `%${keywords[0]}%` : `%${query.slice(0, 6)}%`;
+    if (keywords.length > 0) {
+      for (const kw of keywords.slice(0, 3)) {
+        try {
+          const kwResults = await this.dataSource.query(
+            `SELECT id, content, pageNumber, metadata
+             FROM document_chunks
+             WHERE docId = ? AND content LIKE ?
+             ORDER BY pageNumber ASC
+             LIMIT ?`,
+            [docId, `%${kw}%`, Math.ceil(topK / keywords.length)],
+          );
 
-      const rawResults = await this.dataSource.query(
-        `SELECT id, content, pageNumber, metadata
-         FROM document_chunks
-         WHERE docId = ? AND content LIKE ?
-         LIMIT ?`,
-        [docId, searchPattern, topK],
-      );
+          if (kwResults && kwResults.length > 0) {
+            kwResults.forEach((r: any) => {
+              // 避免重复引入相同 chunk
+              if (!results.some((existing) => existing.content === r.content)) {
+                results.push({
+                  pageNumber: Number(r.pageNumber || 1),
+                  content: r.content,
+                  metadata: r.metadata,
+                });
+              }
+            });
+          }
+        } catch (e) {}
+      }
+    }
 
-      let finalResults = rawResults;
-
-      // 若模糊搜索没匹配到，取前 N 块切块填充出处
-      if (!finalResults || finalResults.length === 0) {
-        finalResults = await this.dataSource.query(
+    // 逻辑 C：若依然不足，兜底获取文档前 TopK 块
+    if (results.length === 0) {
+      try {
+        const fallbackResults = await this.dataSource.query(
           `SELECT id, content, pageNumber, metadata
            FROM document_chunks
            WHERE docId = ?
+           ORDER BY pageNumber ASC
            LIMIT ?`,
           [docId, topK],
         );
-      }
-
-      return (finalResults || []).map((r: any) => ({
-        pageNumber: Number(r.pageNumber || r.page_number || 1),
-        content: r.content,
-        metadata: r.metadata,
-      }));
-    } catch (err) {
-      this.logger.error(`数据库切块检索异常: ${err.message}`);
-      return [];
+        (fallbackResults || []).forEach((r: any) => {
+          results.push({
+            pageNumber: Number(r.pageNumber || 1),
+            content: r.content,
+            metadata: r.metadata,
+          });
+        });
+      } catch (e) {}
     }
+
+    return results.slice(0, topK);
   }
 
   /**
@@ -126,19 +147,20 @@ export class AiService {
   }
 
   /**
-   * 流式打字机 RAG 问答 (带严格 [第 X 页] 出处要求)
+   * 流式打字机 RAG 问答 (带严格 [第 X 页] 出处要求与当前页匹配)
    */
   async askDocumentRAGStream(
     docId: string,
     query: string,
     topK: number,
     subject: Subject<any>,
+    currentPage?: number,
   ) {
     try {
-      // Step 1: 检索相关的向量切块与页码
-      const sources = await this.retrieveContextChunks(docId, query, topK);
+      // Step 1: 检索相关的切块与页码 (带 currentPage 优先视口页码)
+      const sources = await this.retrieveContextChunks(docId, query, topK, currentPage);
 
-      // 先向前端推传送检索到的引用源页码信息 (包含 pageNumber)
+      // 推送引用的出处页码给前端
       subject.next({
         type: 'sources',
         sources: sources.map((s) => ({
@@ -147,17 +169,22 @@ export class AiService {
         })),
       });
 
-      // Step 2: 组装带页码的 Prompt
+      // Step 2: 组装 Prompt
       const contextPrompt = sources
-        .map((s) => `--- 【切块出处: 第 ${s.pageNumber} 页】 ---\n${s.content}`)
+        .map((s) => `--- 【参考出处: 第 ${s.pageNumber} 页】 ---\n${s.content}`)
         .join('\n\n');
 
+      const currentContextHint = currentPage
+        ? `用户当前正在阅读 PDF 的【第 ${currentPage} 页】。`
+        : '';
+
       const systemPrompt = `你是一名精通财报分析与图书研读的 AI 助手。
+${currentContextHint}
 请仔细阅读下方提供的文档参考切块内容，并回答用户的提问。
 
 【核心引用规范与要求】：
-1. 你的每一个主要回答结论、数据或论点后，必须明确标注出处页码，格式严格为：[第 X 页]。例如：“公司经营活动现金流量净额为 665.9 亿元 [第 42 页]。”
-2. 即使提问者没有明确询问页码，你也必须在每个推演段落后带上出处的 [第 X 页] 标签。
+1. 你的每一个主要回答结论、数据或论述段落后，必须明确标注出处页码，格式严格为：[第 X 页]。例如：“公司经营活动现金流量净额为 665.9 亿元 [第 42 页]。”
+2. 标注的页码 X 必须严格来自于下方参考切块的【参考出处: 第 X 页】，不得凭空捏造页码。
 3. 请保持专业、条理清晰，多使用 Markdown 列表。若参考资料中未提及相关内容，请明确告知用户。
 
 参考切块资料上下文:
