@@ -29,14 +29,17 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       user.value = await getProfileApi();
     } catch (e) {
-      logout();
+      logout(true);
     }
   }
 
-  function logout() {
+  function logout(shouldRedirect = false) {
     token.value = '';
     user.value = null;
     localStorage.removeItem('fn_access_token');
+    if (shouldRedirect || window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
   }
 
   return {

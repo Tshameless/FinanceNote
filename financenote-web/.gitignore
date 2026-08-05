@@ -1,0 +1,4 @@
+# 前端依赖与打包输出
+node_modules/
+dist/
+*.local

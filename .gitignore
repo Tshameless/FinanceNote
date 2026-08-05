@@ -1,0 +1,40 @@
+# 依赖包
+node_modules/
+**/node_modules/
+
+# 编译输出目录
+dist/
+**/dist/
+build/
+*.tsbuildinfo
+**/tsbuildinfo
+
+# 环境变量与敏感秘钥 (包含 DEEPSEEK_API_KEY，绝对禁入 Git)
+.env
+.env.local
+.env.*.local
+!*.example
+
+# 临时与受保护的文件上传保存目录
+uploads/
+**/uploads/
+*.pdf
+*.epub
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE 与操作系统产生的杂项
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

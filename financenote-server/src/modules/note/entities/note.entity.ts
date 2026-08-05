@@ -1,8 +1,5 @@
 /**
  * 块级研读笔记实体定义文件 (NoteEntity)
- * 
- * 对应数据库表：`notes`
- * 记录用户为财报或书籍编写的 Markdown 格式笔记，可关联特定 document 或独立存在。
  */
 
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
@@ -22,7 +19,7 @@ export class NoteEntity {
   @JoinColumn({ name: 'userId' })
   user: UserEntity;
 
-  @Column({ type: 'uuid', nullable: true, comment: '关联的文档 ID (可选)' })
+  @Column({ type: 'varchar', length: 36, nullable: true, comment: '关联的文档 ID (可选)' })
   docId: string;
 
   @ManyToOne(() => DocumentEntity, (doc) => doc.notes, { onDelete: 'SET NULL', nullable: true })
@@ -35,7 +32,7 @@ export class NoteEntity {
   @Column({ type: 'text', nullable: true, comment: 'Markdown 格式的笔记正文内容' })
   content: string;
 
-  @Column({ type: 'text', array: true, nullable: true, comment: '分类标签数组 (例如 ["财务比率", "风险警示"])' })
+  @Column({ type: 'simple-array', nullable: true, comment: '分类标签数组' })
   tags: string[];
 
   @CreateDateColumn({ comment: '笔记创建时间' })

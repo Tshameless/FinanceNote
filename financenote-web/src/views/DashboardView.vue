@@ -184,7 +184,7 @@
         <el-button @click="showUploadDialog = false">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="submitUpload">开始上传并处理</el-button>
       </template>
-    </dialog>
+    </el-dialog>
   </div>
 </template>
 

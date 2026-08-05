@@ -1,0 +1,8 @@
+# 后端依赖与输出
+node_modules/
+dist/
+uploads/
+.env
+.env.local
+!*.example
+*.log

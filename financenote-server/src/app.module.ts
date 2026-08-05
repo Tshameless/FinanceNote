@@ -3,7 +3,7 @@
  * 
  * 职责划分：
  * 1. 负责加载全系统的 `.env` 环境变量配置 (ConfigModule)
- * 2. 负责配置 TypeORM 与 PostgreSQL (PgVector) 数据库连接
+ * 2. 负责配置 TypeORM 与 MySQL 数据库连接
  * 3. 负责全局限流保护 (ThrottlerModule) 防止恶意频繁调用 API
  * 4. 负责导入各业务核心子模块：AuthModule, UserModule, DocumentModule, NoteModule, AiModule
  */
@@ -36,16 +36,16 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
       envFilePath: ['.env.local', '.env'],
     }),
 
-    // 2. PostgreSQL + PgVector 数据库连接模块
+    // 2. MySQL / PostgreSQL 数据库连接模块
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
+        type: (configService.get<string>('DB_TYPE') || 'mysql') as any,
         host: configService.get<string>('DB_HOST', 'localhost'),
-        port: configService.get<number>('DB_PORT', 5432),
-        username: configService.get<string>('DB_USERNAME', 'postgres'),
-        password: configService.get<string>('DB_PASSWORD', 'postgres'),
+        port: configService.get<number>('DB_PORT', 3306),
+        username: configService.get<string>('DB_USERNAME', 'root'),
+        password: configService.get<string>('DB_PASSWORD', '123456'),
         database: configService.get<string>('DB_DATABASE', 'financenote'),
         entities: [
           UserEntity,
@@ -54,15 +54,15 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
           NoteEntity,
           AnnotationEntity,
         ],
-        synchronize: true, // 开发阶段自动同步表结构，生产环境建议关闭
-        logging: false,    // 可根据需求调整 SQL 打印日志
+        synchronize: true, // 自动增量创建更新数据库表与字段
+        logging: false,
       }),
     }),
 
-    // 3. 全局 API 速率限制 (Throttler) 防止刷量与滥用
+    // 3. 全局 API 速率限制 (Throttler)
     ThrottlerModule.forRoot([{
-      ttl: 60000,  // 60秒时间窗口
-      limit: 100,  // 窗口内最多允许 100 次请求
+      ttl: 60000,
+      limit: 100,
     }]),
 
     // 4. 业务子模块划分
@@ -73,7 +73,6 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
     AiModule,
   ],
   providers: [
-    // 全局开启 API Throttler 限流守卫
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

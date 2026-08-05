@@ -1,9 +1,5 @@
 /**
  * PDF 原文划线标注与坐标锚点实体定义文件 (AnnotationEntity)
- * 
- * 对应数据库表：`annotations`
- * 记录用户在阅读财报 PDF 时划选中或框选表格生成的【原文高亮与坐标锚点】。
- * 前端点击笔记里的动态引用卡片时，触发阅读器精确跳转 `pageNum` 并定位绘制 `rectCoords`。
  */
 
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
@@ -18,14 +14,14 @@ export class AnnotationEntity {
   @Column({ type: 'int', comment: '所有者 User ID' })
   userId: number;
 
-  @Column({ type: 'uuid', comment: '关联的文档 ID' })
+  @Column({ type: 'varchar', length: 36, comment: '关联的文档 ID' })
   docId: string;
 
   @ManyToOne(() => DocumentEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'docId' })
   document: DocumentEntity;
 
-  @Column({ type: 'uuid', nullable: true, comment: '关联的笔记 ID (可选)' })
+  @Column({ type: 'varchar', length: 36, nullable: true, comment: '关联的笔记 ID (可选)' })
   noteId: string;
 
   @ManyToOne(() => NoteEntity, (note) => note.annotations, { onDelete: 'SET NULL', nullable: true })
@@ -35,7 +31,7 @@ export class AnnotationEntity {
   @Column({ type: 'int', comment: '所在页码 (1-based)' })
   pageNum: number;
 
-  @Column({ type: 'jsonb', comment: '划线选框相对坐标矩形 { x: number, y: number, width: number, height: number }' })
+  @Column({ type: 'json', comment: '划线选框相对坐标矩形' })
   rectCoords: Record<string, any>;
 
   @Column({ type: 'text', comment: '选中的财报原文或表格文本片段' })
