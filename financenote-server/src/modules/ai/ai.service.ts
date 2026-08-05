@@ -79,31 +79,35 @@ export class AiService {
    * 降级关键字检索 (文本模糊匹配)
    */
   private async fallbackKeywordSearch(docId: string, query: string, topK: number): Promise<SourceReference[]> {
-    const rawResults = await this.dataSource.query(
-      `SELECT id, content, page_number as "pageNumber", metadata
-       FROM document_chunks
-       WHERE doc_id = $1 AND content ILIKE $2
-       LIMIT $3`,
-      [docId, `%${query.slice(0, 10)}%`, topK],
-    );
-
-    if (rawResults.length === 0) {
-      // 若匹配不到，返回前 N 块作为默认 Context
-      const defaultResults = await this.dataSource.query(
-        `SELECT id, content, page_number as "pageNumber", metadata
+    try {
+      const rawResults = await this.dataSource.query(
+        `SELECT id, content, pageNumber, metadata
          FROM document_chunks
-         WHERE doc_id = $1
-         LIMIT $2`,
-        [docId, topK],
+         WHERE docId = ? AND content LIKE ?
+         LIMIT ?`,
+        [docId, `%${query.slice(0, 10)}%`, topK],
       );
-      return defaultResults.map((r: any) => ({ pageNumber: r.pageNumber, content: r.content, metadata: r.metadata }));
-    }
 
-    return rawResults.map((r: any) => ({
-      pageNumber: r.pageNumber,
-      content: r.content,
-      metadata: r.metadata,
-    }));
+      if (rawResults.length === 0) {
+        const defaultResults = await this.dataSource.query(
+          `SELECT id, content, pageNumber, metadata
+           FROM document_chunks
+           WHERE docId = ?
+           LIMIT ?`,
+          [docId, topK],
+        );
+        return defaultResults.map((r: any) => ({ pageNumber: r.pageNumber, content: r.content, metadata: r.metadata }));
+      }
+
+      return rawResults.map((r: any) => ({
+        pageNumber: r.pageNumber,
+        content: r.content,
+        metadata: r.metadata,
+      }));
+    } catch (err) {
+      this.logger.error(`数据库检索切块出错: ${err.message}`);
+      return [];
+    }
   }
 
   /**
