@@ -8,9 +8,9 @@
           <el-icon><Menu /></el-icon> 目录大纲
         </el-button>
 
-        <!-- 模式切换：连续平滑滚动 vs 单页翻页 -->
+        <!-- 模式切换：连续平滑滚动 vs 单页切页 -->
         <el-radio-group v-model="renderMode" size="small" @change="handleModeChange">
-          <el-radio-button label="continuous">📜 连续下滑滚动</el-radio-button>
+          <el-radio-button label="continuous">📜 连续下滑阅读</el-radio-button>
           <el-radio-button label="single">📖 单页切页</el-radio-button>
         </el-radio-group>
       </div>
@@ -53,7 +53,7 @@
           <el-button size="small" text @click="showOutline = false">关闭</el-button>
         </div>
         <div v-if="outlineTree.length === 0" class="empty-outline">
-          该 PDF 未嵌入标准结构化目录，可使用上方页码直接跳转
+          该 PDF 未嵌入标准结构化目录，使用顶部页码即可精确跳页
         </div>
         <div v-else class="outline-list">
           <div
@@ -94,7 +94,7 @@
         </div>
       </div>
 
-      <!-- 2. 单页翻页阅读模式 (Single Page View) -->
+      <!-- 2. 单页切页阅读模式 (Single Page View) -->
       <div v-else class="pdf-single-wrapper" ref="singleWrapperRef">
         <div class="canvas-viewport" :style="viewportStyle">
           <canvas ref="canvasRef"></canvas>
@@ -111,13 +111,12 @@
 
 <script setup lang="ts">
 /**
- * 升级版 PDF 阅读器组件 (PdfViewer.vue)
+ * 修复版 PDF 阅读器组件 (PdfViewer.vue)
  * 
- * 改进核心点：
- * 1. 【下滑平滑连续阅读】支持像 Chrome / Adobe Acrobat / Obsidian 一样的连续垂直滚动长列表模式！
- * 2. 【PDF 目录大纲提取】自动提取 PDF 本身的章节 Bookmark Outline，点击直接跳页！
- * 3. 【流畅适应宽幅与缩放】自动适应视图宽度，支持键盘 / 滚轮操作。
- * 4. 【出处精密跳转】点击 AI [第42页] 引用时，平滑 `scrollIntoView` 并绘制高亮选框。
+ * 核心 Bug 修复：
+ * 1. 给未渲染的连续页面容器预设固定高宽 min-height，消除元素塌陷导致的 scrollIntoView 错位。
+ * 2. 在跳页动画执行期间锁死 isJumping，防止滚动事件把 currentPage 误切回第 1/2 页。
+ * 3. 实现与 1..N 物理页码 100% 精确对应的弹窗跳转与高亮定位。
  */
 
 import { ref, onMounted, watch, computed, nextTick } from 'vue';
@@ -126,7 +125,6 @@ import { ElMessage } from 'element-plus';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useAuthStore } from '../stores/authStore';
 
-// 指定 PDF.js Worker 路径
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 
 const props = defineProps<{
@@ -139,7 +137,7 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore();
 
-const renderMode = ref<'continuous' | 'single'>('continuous'); // 默认连续平滑滚动模式
+const renderMode = ref<'continuous' | 'single'>('continuous');
 const currentPage = ref<number>(1);
 const totalPages = ref<number>(1);
 const scale = ref<number>(1.1);
@@ -152,8 +150,8 @@ const singleWrapperRef = ref<HTMLDivElement | null>(null);
 
 let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
 const renderedPages = new Set<number>();
+let isJumping = false;
 
-// 动态高亮选框 (当点击 AI [P42] 引用卡片时激活)
 const highlightRect = ref<{ x: number; y: number; width: number; height: number } | null>(null);
 
 const viewportStyle = computed(() => ({
@@ -202,7 +200,6 @@ async function loadPdfStream() {
     pdfDoc = await loadingTask.promise;
     totalPages.value = pdfDoc.numPages;
 
-    // 提取 PDF 目录大纲
     try {
       const outline = await pdfDoc.getOutline();
       if (outline) {
@@ -223,13 +220,9 @@ async function loadPdfStream() {
   }
 }
 
-/**
- * 渲染模式一：连续下滑平滑滚动渲染
- */
 async function renderContinuousPages() {
   renderedPages.clear();
   await nextTick();
-  // 优先渲染前 5 页保证流畅度
   for (let p = 1; p <= Math.min(5, totalPages.value); p++) {
     renderPageCanvas(p);
   }
@@ -254,24 +247,18 @@ async function renderPageCanvas(pageNum: number) {
   }
 }
 
-/**
- * 监听连续下滑滚动，自动计算当前所处页码并按需增量渲染
- */
 function handleContinuousScroll() {
-  if (!continuousWrapperRef.value || renderMode.value !== 'continuous') return;
+  // 如果当前处于跳页平滑滚动锁状态，不响应普通滚动重置
+  if (!continuousWrapperRef.value || renderMode.value !== 'continuous' || isJumping) return;
 
-  const containerTop = continuousWrapperRef.value.scrollTop;
+  const parentRect = continuousWrapperRef.value.getBoundingClientRect();
   
   for (let p = 1; p <= totalPages.value; p++) {
     const el = document.getElementById(`pdf-page-container-${p}`);
     if (el) {
       const rect = el.getBoundingClientRect();
-      const parentRect = continuousWrapperRef.value.getBoundingClientRect();
-      
-      // 判断哪一页居中于当前视口
-      if (rect.top <= parentRect.top + 200 && rect.bottom >= parentRect.top + 200) {
+      if (rect.top <= parentRect.top + 250 && rect.bottom >= parentRect.top + 100) {
         currentPage.value = p;
-        // 增量预渲染上下相邻页
         renderPageCanvas(p);
         if (p > 1) renderPageCanvas(p - 1);
         if (p < totalPages.value) renderPageCanvas(p + 1);
@@ -281,9 +268,6 @@ function handleContinuousScroll() {
   }
 }
 
-/**
- * 渲染模式二：单页切页渲染
- */
 async function renderSinglePage(pageNum: number) {
   if (!pdfDoc || !canvasRef.value) return;
 
@@ -351,21 +335,27 @@ function refreshRender() {
 }
 
 /**
- * 供外部调用：跳页并平滑滚动高亮 (如点击 AI [P42] 引用卡片时)
+ * 供外部调用：跳页并平滑精准滚动高亮 (如点击 AI [P42] 引用卡片时)
  */
 async function jumpToPage(pageNum: number, rect?: { x: number; y: number; width: number; height: number }) {
   if (pageNum >= 1 && pageNum <= totalPages.value) {
     currentPage.value = pageNum;
     highlightRect.value = rect || { x: 0.1, y: 0.2, width: 0.8, height: 0.1 };
+    isJumping = true;
 
     if (renderMode.value === 'continuous') {
       await renderPageCanvas(pageNum);
+      await nextTick();
       const el = document.getElementById(`pdf-page-container-${pageNum}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+      setTimeout(() => {
+        isJumping = false;
+      }, 1000);
     } else {
       renderSinglePage(pageNum);
+      isJumping = false;
     }
   }
 }
@@ -435,7 +425,6 @@ defineExpose({
   position: relative;
 }
 
-/* 目录大纲 Drawer Sidebar */
 .pdf-outline-sidebar {
   width: 240px;
   background: #1e293b;
@@ -485,7 +474,7 @@ defineExpose({
   color: #6366f1;
 }
 
-/* 模式一：连续平滑下滑模式 */
+/* 连续平滑下滑模式：为容器分配 min-height 预占位，防止未渲染页面高度塌陷 */
 .pdf-continuous-wrapper {
   flex: 1;
   overflow-y: auto;
@@ -500,6 +489,8 @@ defineExpose({
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-height: 840px; /* 预占用 A4 页面物理垂直高度，防止塌陷 */
+  min-width: 600px;
 }
 
 .page-num-label {
@@ -508,7 +499,6 @@ defineExpose({
   margin-bottom: 4px;
 }
 
-/* 模式二：单页模式 */
 .pdf-single-wrapper {
   flex: 1;
   overflow: auto;
@@ -521,6 +511,8 @@ defineExpose({
   border-radius: 4px;
   overflow: hidden;
   background: #ffffff;
+  min-height: 800px;
+  min-width: 600px;
 }
 
 @keyframes pulse {
