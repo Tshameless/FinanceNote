@@ -1,11 +1,10 @@
 /**
  * AI 研读助手服务实现 (AiService)
  * 
- * 核心设计模式与技术点：
- * 1. 【后端安全屏障】使用 process.env.DEEPSEEK_API_KEY 实例化 OpenAI / DeepSeek 客户端。Key 严保存留在后端，前端零触碰。
- * 2. 【RAG 向量检索】利用 PostgreSQL (pgvector) 进行针对文档的语义向量相似度匹配，检索与提问最契合的财报切块片段与对应页码 (pageNumber)。
- * 3. 【打字机效果 (SSE Stream)】通过 RxJS Subject 将模型生成的流式 Chunk 增量推送给 NestJS Controller 的 @Sse 终端。
- * 4. 【精准页码出处 Grounding】先向前端推送引用的出处的元数据 [{ pageNumber: 42, section: "..." }]，便于前端点击跳转。
+ * 核心功能：
+ * 1. 结合 MySQL 向量/全文关键字匹配检索最相关的切块段落与对应 [页码 pageNumber]
+ * 2. 强指令提示词 (System Prompt)：要求 LLM 必须为每一个观点和数据标注 [第 X 页] 出处
+ * 3. 通过 SSE 将包含 [页码] 的出处来源与增量文本推送至前端 Vue 3
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -30,9 +29,8 @@ export class AiService {
     private dataSource: DataSource,
   ) {
     const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY') || 'sk-demo';
-    const baseURL = this.configService.get<string>('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1';
+    const baseURL = this.configService.get<string>('DEEPSEEK_BASE_URL') || 'https://token.sensenova.cn/v1';
 
-    // 实例化 OpenAI/DeepSeek API 客户端 (绝对不在前端曝光)
     this.openaiClient = new OpenAI({
       apiKey,
       baseURL,
@@ -40,72 +38,74 @@ export class AiService {
   }
 
   /**
-   * PostgreSQL pgvector 语义检索相关的文本切块
+   * 检索最相关的文本切块与对应页码
    */
   async retrieveContextChunks(docId: string, query: string, topK = 5): Promise<SourceReference[]> {
     try {
-      // 1. 生成查询文本的向量 Embedding (使用 DeepSeek / OpenAI embedding 模型)
+      // 1. 尝试向量 Embedding 检索
       const embedding = await this.generateEmbedding(query);
-
-      if (!embedding || embedding.length === 0) {
-        // 若缺少向量库支持，降级使用普通全文模糊匹配 query
-        return this.fallbackKeywordSearch(docId, query, topK);
+      if (embedding && embedding.length > 0) {
+        const embeddingArrayStr = `[${embedding.join(',')}]`;
+        const rawResults = await this.dataSource.query(
+          `SELECT id, content, pageNumber, metadata
+           FROM document_chunks
+           WHERE docId = ?
+           ORDER BY embedding <=> ? ASC
+           LIMIT ?`,
+          [docId, embeddingArrayStr, topK],
+        );
+        if (rawResults && rawResults.length > 0) {
+          return rawResults.map((r: any) => ({
+            pageNumber: Number(r.pageNumber || r.page_number || 1),
+            content: r.content,
+            metadata: r.metadata,
+          }));
+        }
       }
-
-      const embeddingArrayStr = `[${embedding.join(',')}]`;
-
-      // 2. 执行 pgvector 相似度查询 1 - (embedding <=> $1)
-      const rawResults = await this.dataSource.query(
-        `SELECT id, content, page_number as "pageNumber", metadata
-         FROM document_chunks
-         WHERE doc_id = $1
-         ORDER BY embedding <=> $2 ASC
-         LIMIT $3`,
-        [docId, embeddingArrayStr, topK],
-      );
-
-      return rawResults.map((r: any) => ({
-        pageNumber: r.pageNumber,
-        content: r.content,
-        metadata: r.metadata,
-      }));
     } catch (error) {
-      this.logger.warn(`pgvector 向量检索出错，自动回退到关键字模糊检索: ${error.message}`);
-      return this.fallbackKeywordSearch(docId, query, topK);
+      this.logger.warn(`向量检索不可用或提示: ${error.message}，自动降级为文本切块关键字匹配`);
     }
+
+    return this.fallbackKeywordSearch(docId, query, topK);
   }
 
   /**
-   * 降级关键字检索 (文本模糊匹配)
+   * 降级关键字与多词匹配检索
    */
   private async fallbackKeywordSearch(docId: string, query: string, topK: number): Promise<SourceReference[]> {
     try {
+      // 提取提问关键词
+      const keywords = query.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 1);
+      const searchPattern = keywords.length > 0 ? `%${keywords[0]}%` : `%${query.slice(0, 6)}%`;
+
       const rawResults = await this.dataSource.query(
         `SELECT id, content, pageNumber, metadata
          FROM document_chunks
          WHERE docId = ? AND content LIKE ?
          LIMIT ?`,
-        [docId, `%${query.slice(0, 10)}%`, topK],
+        [docId, searchPattern, topK],
       );
 
-      if (rawResults.length === 0) {
-        const defaultResults = await this.dataSource.query(
+      let finalResults = rawResults;
+
+      // 若模糊搜索没匹配到，取前 N 块切块填充出处
+      if (!finalResults || finalResults.length === 0) {
+        finalResults = await this.dataSource.query(
           `SELECT id, content, pageNumber, metadata
            FROM document_chunks
            WHERE docId = ?
            LIMIT ?`,
           [docId, topK],
         );
-        return defaultResults.map((r: any) => ({ pageNumber: r.pageNumber, content: r.content, metadata: r.metadata }));
       }
 
-      return rawResults.map((r: any) => ({
-        pageNumber: r.pageNumber,
+      return (finalResults || []).map((r: any) => ({
+        pageNumber: Number(r.pageNumber || r.page_number || 1),
         content: r.content,
         metadata: r.metadata,
       }));
     } catch (err) {
-      this.logger.error(`数据库检索切块出错: ${err.message}`);
+      this.logger.error(`数据库切块检索异常: ${err.message}`);
       return [];
     }
   }
@@ -121,13 +121,12 @@ export class AiService {
       });
       return res.data[0]?.embedding || [];
     } catch (err) {
-      this.logger.error(`生成向量 Embedding 失败: ${err.message}`);
       return [];
     }
   }
 
   /**
-   * 流式问答打字机 RAG 交互 Pipeline
+   * 流式打字机 RAG 问答 (带严格 [第 X 页] 出处要求)
    */
   async askDocumentRAGStream(
     docId: string,
@@ -142,26 +141,29 @@ export class AiService {
       // 先向前端推传送检索到的引用源页码信息 (包含 pageNumber)
       subject.next({
         type: 'sources',
-        sources: sources.map((s) => ({ pageNumber: s.pageNumber, snippet: s.content.slice(0, 80) })),
+        sources: sources.map((s) => ({
+          pageNumber: s.pageNumber,
+          snippet: s.content.slice(0, 80),
+        })),
       });
 
-      // Step 2: 组装 Prompt
+      // Step 2: 组装带页码的 Prompt
       const contextPrompt = sources
-        .map((s) => `[出处: 第 ${s.pageNumber} 页]:\n${s.content}`)
-        .join('\n\n---\n\n');
+        .map((s) => `--- 【切块出处: 第 ${s.pageNumber} 页】 ---\n${s.content}`)
+        .join('\n\n');
 
-      const systemPrompt = `你是一名精通财报分析与深度阅读的 AI 研读助手。
-请根据下方提供的文档切块内容回答用户的提问。
+      const systemPrompt = `你是一名精通财报分析与图书研读的 AI 助手。
+请仔细阅读下方提供的文档参考切块内容，并回答用户的提问。
 
-要求：
-1. 必须基于文档回答，回答中涉及的具体数据、核心论点或风险提示，必须在句末标注出处页码，格式例如：[第42页]。
-2. 保持回答专业、客观、逻辑条理清晰，多使用 Markdown 列表或表格进行呈现。
-3. 如果文档上下文中未提及相关信息，请明确告知用户。
+【核心引用规范与要求】：
+1. 你的每一个主要回答结论、数据或论点后，必须明确标注出处页码，格式严格为：[第 X 页]。例如：“公司经营活动现金流量净额为 665.9 亿元 [第 42 页]。”
+2. 即使提问者没有明确询问页码，你也必须在每个推演段落后带上出处的 [第 X 页] 标签。
+3. 请保持专业、条理清晰，多使用 Markdown 列表。若参考资料中未提及相关内容，请明确告知用户。
 
-文档参考上下文:
-${contextPrompt || '暂无查找到相关切块'}`;
+参考切块资料上下文:
+${contextPrompt || '暂无查找到匹配切块'}`;
 
-      // Step 3: 调用商用 LLM 流式输出 (商汤 SenseNova / DeepSeek)
+      // Step 3: 调用商用大模型流式输出
       const modelName = this.configService.get<string>('AI_MODEL_NAME', 'sensenova-6.7-flash-lite');
       const responseStream = await this.openaiClient.chat.completions.create({
         model: modelName,

@@ -5,23 +5,23 @@
         <el-icon class="sparkle-icon"><Opportunity /></el-icon>
         <span>AI 财报/图书研读助手 (RAG)</span>
       </div>
-      <el-tag size="small" type="success" effect="dark">DeepSeek-R1 驱动</el-tag>
+      <el-tag size="small" type="success" effect="dark">商汤 SenseNova 驱动</el-tag>
     </div>
 
     <!-- 问答消息历史区域 -->
     <div class="ai-chat-messages" ref="messageListRef">
       <div class="welcome-card fn-glass-card">
         <h4>👋 您好！我是您的 AI 研读 Copilot</h4>
-        <p>您可以问我关于当前财报的任何问题，例如：</p>
+        <p>您可以问我关于当前财报或书籍的任何问题，例如：</p>
         <ul>
+          <li @click="quickAsk('请总结一下本书/本财报的核心观点与主要论点？')">
+            💡 “请总结一下本书/本财报的核心观点与主要论点？”
+          </li>
           <li @click="quickAsk('该公司经营活动现金流量净额是多少？变动主要原因？')">
             💡 “该公司经营活动现金流量净额是多少？变动主要原因？”
           </li>
-          <li @click="quickAsk('管理层讨论与分析(MD&A)中提到了哪些主要业务风险？')">
-            💡 “管理层讨论与分析(MD&A)中提到了哪些主要业务风险？”
-          </li>
-          <li @click="quickAsk('总结一下财报中的关键会计估计变更。')">
-            💡 “总结一下财报中的关键会计估计变更。”
+          <li @click="quickAsk('书中有哪些关于资产配置和风险防范的关键建议？')">
+            💡 “书中有哪些关于资产配置和风险防范的关键建议？”
           </li>
         </ul>
       </div>
@@ -36,24 +36,40 @@
           <span v-else>🤖</span>
         </div>
         <div class="content">
-          <!-- 检索到的引用出处卡片卡片组 -->
+          <!-- 1. 顶部显示的引用源出处页码卡片 -->
           <div v-if="msg.sources && msg.sources.length > 0" class="sources-badge-group">
-            <span class="source-label">📖 检索到财报引用出处:</span>
+            <span class="source-label">📖 检索到的原文出处页码:</span>
             <el-tag
               v-for="(src, sIdx) in msg.sources"
               :key="sIdx"
               size="small"
               class="source-tag"
               type="warning"
-              effect="plain"
+              effect="dark"
               @click="handleJumpToPage(src.pageNumber)"
             >
-              [第 {{ src.pageNumber }} 页出处]
+              📄 第 {{ src.pageNumber }} 页
             </el-tag>
           </div>
 
-          <!-- AI 打字机增量回答内容 -->
-          <div class="text-markdown">{{ msg.text }}</div>
+          <!-- 2. AI 打字机增量回答内容 -->
+          <div class="text-markdown" v-html="formatAiText(msg.text)"></div>
+
+          <!-- 3. 从 AI 文本中提取的所有页码可点击跳转标签 -->
+          <div v-if="msg.role === 'assistant' && extractPageNumbers(msg.text).length > 0" class="inline-page-citations">
+            <span class="cite-label">🎯 正文提到的定位页码:</span>
+            <el-tag
+              v-for="pNum in extractPageNumbers(msg.text)"
+              :key="pNum"
+              size="small"
+              type="primary"
+              effect="plain"
+              class="cite-tag"
+              @click="handleJumpToPage(pNum)"
+            >
+              👉 跳转第 {{ pNum }} 页
+            </el-tag>
+          </div>
         </div>
       </div>
 
@@ -61,7 +77,7 @@
         <span class="dot"></span>
         <span class="dot"></span>
         <span class="dot"></span>
-        <span class="text">AI 正在深度检索向量数据库并推演...</span>
+        <span class="text">AI 正在结合页码上下文深度推演...</span>
       </div>
     </div>
 
@@ -69,7 +85,7 @@
     <div class="ai-input-box">
       <el-input
         v-model="inputText"
-        placeholder="向 AI 提问该财报/书籍的内容 (自动带页码出处)..."
+        placeholder="向 AI 提问该财报/书籍的内容 (回答自动带 [第 X 页] 出处)..."
         :disabled="loading"
         @keyup.enter="handleSend"
       >
@@ -87,10 +103,10 @@
 /**
  * AI 研读 Copilot 抽屉组件 (AiDrawer.vue)
  * 
- * 核心功能：
- * 1. 发起基于 Fetch 的 SSE 流式打字机问答，安全传输 Authorization Bearer JWT Token
- * 2. 接收后端推送的包含 [pageNumber] 的 sources 数组
- * 3. 点击引用出处卡片触发 `onJumpToPage(pageNumber)` 事件，命令 PDF 阅读器实时跳转！
+ * 改进点：
+ * 1. 自动从 AI 的推演文本中正则匹配形如 [第 42 页] 或 [P42] 的出处
+ * 2. 渲染为高亮的“👉 跳转第 42 页”交互按钮
+ * 3. 点击即可立刻控制 PDF 阅读器平滑滚动跳页定位！
  */
 
 import { ref, nextTick } from 'vue';
@@ -156,6 +172,29 @@ function quickAsk(prompt: string) {
 
 function handleJumpToPage(pageNum: number) {
   emit('onJumpToPage', pageNum);
+}
+
+/**
+ * 正则提取文本中出现的所有 [第 X 页] 页码
+ */
+function extractPageNumbers(text: string): number[] {
+  if (!text) return [];
+  const regex = /\[(?:第\s*)?(\d+)\s*页\]|\[P(\d+)\]/g;
+  const pageNums = new Set<number>();
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const p = parseInt(match[1] || match[2], 10);
+    if (!isNaN(p) && p > 0) {
+      pageNums.add(p);
+    }
+  }
+  return Array.from(pageNums);
+}
+
+function formatAiText(text: string): string {
+  if (!text) return '';
+  // 简单换行与格式化
+  return text.replace(/\n/g, '<br/>');
 }
 
 function scrollToBottom() {
@@ -257,10 +296,11 @@ function scrollToBottom() {
 .content {
   max-width: 85%;
   background: #334155;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-radius: 12px;
   font-size: 14px;
   color: #f8fafc;
+  line-height: 1.6;
 }
 
 .chat-bubble.user .content {
@@ -270,24 +310,36 @@ function scrollToBottom() {
 .sources-badge-group {
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 
-.source-label {
+.source-label, .cite-label {
   font-size: 12px;
   color: #f59e0b;
+  font-weight: 600;
 }
 
-.source-tag {
+.source-tag, .cite-tag {
   cursor: pointer;
+  transition: transform 0.2s;
 }
 
-.source-tag:hover {
-  transform: scale(1.05);
+.source-tag:hover, .cite-tag:hover {
+  transform: scale(1.08);
+}
+
+.inline-page-citations {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .typing-indicator {
