@@ -6,9 +6,10 @@ import { IsString, IsUUID, IsOptional, IsInt, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RagQueryDto {
-  @ApiProperty({ description: '目标文档 ID', example: 'd3b07384-d113-460a-85d7-1d67417e94e9' })
-  @IsUUID()
-  docId: string;
+  @ApiPropertyOptional({ description: '目标文档 ID (可选)', example: 'd3b07384-d113-460a-85d7-1d67417e94e9' })
+  @IsOptional()
+  @IsString()
+  docId?: string;
 
   @ApiProperty({ description: '用户提问内容', example: '该公司的经营活动现金流量变动的主要原因是什么？' })
   @IsString()

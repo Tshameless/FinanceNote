@@ -150,24 +150,25 @@ export class AiService {
    * 流式打字机 RAG 问答 (带严格 [第 X 页] 出处要求与当前页匹配)
    */
   async askDocumentRAGStream(
-    docId: string,
+    docId: string | undefined,
     query: string,
     topK: number,
     subject: Subject<any>,
     currentPage?: number,
   ) {
     try {
-      // Step 1: 检索相关的切块与页码 (带 currentPage 优先视口页码)
-      const sources = await this.retrieveContextChunks(docId, query, topK, currentPage);
-
-      // 推送引用的出处页码给前端
-      subject.next({
-        type: 'sources',
-        sources: sources.map((s) => ({
-          pageNumber: s.pageNumber,
-          snippet: s.content.slice(0, 80),
-        })),
-      });
+      let sources: SourceReference[] = [];
+      if (docId) {
+        sources = await this.retrieveContextChunks(docId, query, topK, currentPage);
+        // 推送引用的出处页码给前端
+        subject.next({
+          type: 'sources',
+          sources: sources.map((s) => ({
+            pageNumber: s.pageNumber,
+            snippet: s.content.slice(0, 80),
+          })),
+        });
+      }
 
       // Step 2: 组装 Prompt
       const contextPrompt = sources
@@ -178,7 +179,8 @@ export class AiService {
         ? `用户当前正在阅读 PDF 的【第 ${currentPage} 页】。`
         : '';
 
-      const systemPrompt = `你是一名精通财报分析与图书研读的 AI 助手。
+      const systemPrompt = docId
+        ? `你是一名精通财报分析与图书研读的 AI 助手。
 ${currentContextHint}
 请仔细阅读下方提供的文档参考切块内容，并回答用户的提问。
 
@@ -188,7 +190,8 @@ ${currentContextHint}
 3. 请保持专业、条理清晰，多使用 Markdown 列表。若参考资料中未提及相关内容，请明确告知用户。
 
 参考切块资料上下文:
-${contextPrompt || '暂无查找到匹配切块'}`;
+${contextPrompt || '暂无查找到匹配切块'}`
+        : `你是一名精通金融学、微宏观经济学与财报研读的资深 AI 专家助手。请结合经济学原理、商业模式护城河与财报分析视角，回答用户的提问，保持专业、条理清晰并多使用 Markdown 列表结构。`;
 
       // Step 3: 调用商用大模型流式输出
       const modelName = this.configService.get<string>('AI_MODEL_NAME', 'sensenova-6.7-flash-lite');
