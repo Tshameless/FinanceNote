@@ -39,3 +39,11 @@ export function deleteDocumentApi(id: string) {
 export function updateDocumentVisibilityApi(id: string, isPublic: boolean) {
   return request.patch<DocumentItem>(`/documents/${id}/visibility`, { isPublic }) as unknown as Promise<DocumentItem>;
 }
+
+export function retryDocumentApi(id: string) {
+  return request.post<DocumentItem>(`/documents/${id}/retry`) as unknown as Promise<DocumentItem>;
+}
+
+export function cancelDocumentProcessingApi(id: string) {
+  return request.post<DocumentItem>(`/documents/${id}/cancel-processing`) as unknown as Promise<DocumentItem>;
+}

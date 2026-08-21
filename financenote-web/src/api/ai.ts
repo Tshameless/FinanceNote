@@ -19,10 +19,12 @@ export function streamAiAnswerFetch(
   onDone: () => void,
   onError: (err: any) => void
 ) {
+  const csrf = document.cookie.split('; ').find((item) => item.startsWith('fn_csrf_token='))?.split('=').slice(1).join('=');
   fetch('/api/ai/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(csrf ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {}),
     },
     credentials: 'include',
     body: JSON.stringify({ docId: docId || undefined, query, currentPage, conversationId, topK: 5 }),

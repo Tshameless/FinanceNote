@@ -126,8 +126,11 @@ export class DocumentService implements OnModuleInit {
     file: Express.Multer.File,
     dto: UploadDocumentDto,
   ): Promise<DocumentEntity> {
-    await this.assertStorageQuota(userId, file.size);
-    const doc = this.docRepository.create({
+    let savedDoc: DocumentEntity;
+    await this.docRepository.manager.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock($1)', [userId]);
+      await this.assertStorageQuota(userId, file.size, manager);
+      const doc = manager.create(DocumentEntity, {
       userId,
       title: dto.title || file.originalname,
       docType: dto.docType,
@@ -141,14 +144,14 @@ export class DocumentService implements OnModuleInit {
       author: dto.author,
       status: DocumentStatus.PROCESSING,
       isPublic: false,
+      });
+      savedDoc = await manager.save(DocumentEntity, doc);
     });
 
-    const savedDoc = await this.docRepository.save(doc);
-
     // 触发后台异步解析，不阻塞当前 HTTP 请求响应
-    this.enqueueProcessing(savedDoc.id, file.path, 0);
+    this.enqueueProcessing(savedDoc!.id, file.path, 0);
 
-    return savedDoc;
+    return savedDoc!;
   }
 
   /**
@@ -170,10 +173,10 @@ export class DocumentService implements OnModuleInit {
     this.drainProcessingQueue();
   }
 
-  private async assertStorageQuota(userId: number, incomingBytes: number): Promise<void> {
+  private async assertStorageQuota(userId: number, incomingBytes: number, manager = this.docRepository.manager): Promise<void> {
     const configuredLimit = this.configService.get<number>('MAX_USER_STORAGE_BYTES', 1024 * 1024 * 1024);
-    const result = await this.docRepository
-      .createQueryBuilder('doc')
+    const result = await manager
+      .createQueryBuilder(DocumentEntity, 'doc')
       .select('COALESCE(SUM(doc.fileSize), 0)', 'total')
       .where('doc.userId = :userId', { userId })
       .getRawOne<{ total: string }>();
@@ -181,6 +184,34 @@ export class DocumentService implements OnModuleInit {
     if (!Number.isFinite(currentBytes) || currentBytes + incomingBytes > configuredLimit) {
       throw new ForbiddenException('已超过个人文档存储配额');
     }
+  }
+
+  async retryProcessing(id: string, userId: number): Promise<DocumentEntity> {
+    const document = await this.docRepository.findOne({ where: { id, userId } });
+    if (!document) throw new NotFoundException('文档不存在或不属于当前用户');
+    if (document.status !== DocumentStatus.FAILED) throw new ForbiddenException('只有失败文档可以重试');
+    await this.docRepository.update(id, { status: DocumentStatus.PROCESSING, processingProgress: 0, processingError: null });
+    this.cancelledJobs.delete(id);
+    this.enqueueProcessing(id, document.filePath, 0);
+    return this.docRepository.findOneOrFail({ where: { id } });
+  }
+
+  async cancelProcessing(id: string, userId: number): Promise<DocumentEntity> {
+    const document = await this.docRepository.findOne({ where: { id, userId } });
+    if (!document) throw new NotFoundException('文档不存在或不属于当前用户');
+    if (document.status !== DocumentStatus.PROCESSING) throw new ForbiddenException('只有处理中的文档可以取消');
+    this.cancelledJobs.add(id);
+    await this.docRepository.update(id, { status: DocumentStatus.FAILED, processingError: '用户取消文档处理' });
+    if (this.processingQueue) await this.processingQueue.remove(id).catch(() => undefined);
+    return this.docRepository.findOneOrFail({ where: { id } });
+  }
+
+  async getQueueStats(): Promise<{ pending: number; active: number; backend: 'redis' | 'memory' }> {
+    if (this.processingQueue) {
+      const counts = await this.processingQueue.getJobCounts('waiting', 'active', 'delayed');
+      return { pending: (counts.waiting || 0) + (counts.delayed || 0), active: counts.active || 0, backend: 'redis' };
+    }
+    return { pending: this.pendingJobs.length, active: this.activeJobs, backend: 'memory' };
   }
 
   private drainProcessingQueue() {

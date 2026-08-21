@@ -24,6 +24,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { ConversationModule } from './modules/conversation/conversation.module';
 import { ConversationEntity } from './modules/conversation/entities/conversation.entity';
 import { ConversationMessageEntity } from './modules/conversation/entities/message.entity';
+import { HealthModule } from './modules/health/health.module';
 
 // 导入实体 Entity
 import { UserEntity } from './modules/user/user.entity';
@@ -84,6 +85,7 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
     NoteModule,
     AiModule,
     ConversationModule,
+    HealthModule,
   ],
   providers: [
     {

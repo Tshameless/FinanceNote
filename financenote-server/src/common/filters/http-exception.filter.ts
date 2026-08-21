@@ -17,6 +17,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const requestId = request.header('x-request-id') || response.getHeader('X-Request-Id');
 
     // 判断是否为 NestJS 的 HttpException
     const status =
@@ -50,6 +51,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       data: null,
       timestamp: new Date().toISOString(),
       path: request.url,
+      requestId,
     });
   }
 }

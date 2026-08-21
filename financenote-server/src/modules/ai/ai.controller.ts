@@ -2,7 +2,7 @@
  * AI 研读助手控制器 (AiController)
  */
 
-import { Controller, Post, Body, Res, Req, UseGuards, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Res, Req, UseGuards, HttpCode, Logger } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response, Request } from 'express';
@@ -20,6 +20,7 @@ import { RagQueryDto } from './dto/rag-query.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('ai')
 export class AiController {
+  private readonly logger = new Logger(AiController.name);
   constructor(private readonly aiService: AiService, private readonly conversationService: ConversationService) {}
 
   @Post('stream')
@@ -32,6 +33,7 @@ export class AiController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    const startedAt = Date.now();
     // 设置 SSE 流式响应 Header
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -84,9 +86,19 @@ export class AiController {
       user.id,
     );
     if (assistantText && !closed) {
-      await this.conversationService.addMessage(user.id, conversation.id, MessageRole.ASSISTANT, assistantText, assistantSources);
+      const validPages = new Set(assistantSources.map((source) => source.pageNumber));
+      const normalizedText = this.validateCitations(assistantText, validPages);
+      await this.conversationService.addMessage(user.id, conversation.id, MessageRole.ASSISTANT, normalizedText, assistantSources);
     }
     clearTimeout(requestTimeout);
+    this.logger.log(JSON.stringify({ event: 'ai_request', requestId: (req as Request & { requestId?: string }).requestId, userId: user.id, docId: dto.docId, durationMs: Date.now() - startedAt, sourceCount: assistantSources.length, responseChars: assistantText.length }));
+  }
+
+  private validateCitations(text: string, validPages: Set<number>): string {
+    return text.replace(/\[第\s*(\d+)\s*页\]|\[P(\d+)\]/g, (match, pageA, pageB) => {
+      const page = Number(pageA || pageB);
+      return validPages.has(page) ? match : '[出处待核验]';
+    });
   }
 
   @Post('ask')

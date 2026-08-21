@@ -17,6 +17,8 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import cookieParser from 'cookie-parser';
+import { securityMiddleware } from './common/middleware/security.middleware';
+import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -25,6 +27,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
   app.use(cookieParser());
+  app.use(securityMiddleware);
   if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'replace-with-a-long-random-secret')) {
     throw new Error('生产环境必须配置独立的 JWT_SECRET');
   }
@@ -62,6 +65,7 @@ async function bootstrap() {
 
   // 5. 注册全局响应拦截器 (统一 { code: 200, message: 'success', data: ... } 结构)
   app.useGlobalInterceptors(new TransformInterceptor());
+  app.useGlobalInterceptors(new RequestLoggingInterceptor());
 
   // 6. 配置 Swagger 接口文档平台
   const swaggerConfig = new DocumentBuilder()
@@ -75,7 +79,9 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   // 7. 启动服务监听
   const port = process.env.PORT || 3000;

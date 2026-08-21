@@ -159,6 +159,18 @@ export class DocumentController {
     return this.toPublicDocument(document);
   }
 
+  @Post(':id/retry')
+  @ApiOperation({ summary: '重试失败的文档解析任务' })
+  async retry(@Param('id') id: string, @CurrentUser() user: UserEntity) {
+    return this.toPublicDocument(await this.documentService.retryProcessing(id, user.id));
+  }
+
+  @Post(':id/cancel-processing')
+  @ApiOperation({ summary: '取消处理中的文档任务' })
+  async cancelProcessing(@Param('id') id: string, @CurrentUser() user: UserEntity) {
+    return this.toPublicDocument(await this.documentService.cancelProcessing(id, user.id));
+  }
+
   /** 对外只返回展示所需字段，避免泄露磁盘路径和内部处理错误。 */
   private toPublicDocument(document: any) {
     return {

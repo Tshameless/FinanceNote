@@ -16,9 +16,16 @@ const request = axios.create({
   withCredentials: true,
 });
 
+function readCookie(name: string): string | undefined {
+  const match = document.cookie.split('; ').find((item) => item.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : undefined;
+}
+
 // 请求拦截器：自动注入 JWT Token
 request.interceptors.request.use(
   (config) => {
+    const csrf = readCookie('fn_csrf_token');
+    if (csrf) config.headers['X-CSRF-Token'] = csrf;
     return config;
   },
   (error) => {

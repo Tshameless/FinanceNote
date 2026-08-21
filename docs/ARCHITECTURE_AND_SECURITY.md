@@ -35,6 +35,11 @@
 
 ## 2. API Key 与受控资源安全防护三重保障
 
+### 2.4 Cookie 与 CSRF 防护
+- JWT 使用 `HttpOnly` Cookie 保存，浏览器脚本无法读取。
+- 服务端下发 `fn_csrf_token` 非 HttpOnly Cookie，所有写请求必须同时提交 `X-CSRF-Token`。
+- 生产环境 Cookie 强制 `Secure`，Swagger 默认关闭。
+
 ### 2.1 屏障一：API Key 绝对隔离在后端 (`.env`)
 - **零触碰**：前端 Vue 3 不保存、不处理也不下发任何大模型的 API Key。
 - **S2S 安全通信**：NestJS 后端通过 `process.env.DEEPSEEK_API_KEY` 在服务器端内部网络发起 HTTP POST 请求，捕获大模型返回的 token 流后再转发回前端。
