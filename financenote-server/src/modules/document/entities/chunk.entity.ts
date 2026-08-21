@@ -26,7 +26,7 @@ export class DocumentChunkEntity {
   @Column({ type: 'json', nullable: true, comment: '额外元数据 (例如章节标题等)' })
   metadata: Record<string, any>;
 
-  @Column({ type: 'json', nullable: true, comment: '向量 Embedding 浮点数组' })
+  @Column({ type: 'vector', length: 1536, nullable: true, comment: '1536 维 Embedding 向量' })
   embedding: number[];
 
   @CreateDateColumn({ comment: '切块时间' })

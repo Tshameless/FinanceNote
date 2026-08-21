@@ -26,6 +26,7 @@ export interface SourceReference {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private openaiClient: OpenAI;
+  private embeddingClient: OpenAI | null;
 
   constructor(
     private configService: ConfigService,
@@ -43,6 +44,14 @@ export class AiService {
       apiKey,
       baseURL,
     });
+
+    const embeddingKey = this.configService.get<string>('EMBEDDING_API_KEY');
+    this.embeddingClient = embeddingKey
+      ? new OpenAI({
+          apiKey: embeddingKey,
+          baseURL: this.configService.get<string>('EMBEDDING_BASE_URL') || 'https://api.openai.com/v1',
+        })
+      : null;
   }
 
   /**
@@ -65,8 +74,8 @@ export class AiService {
         const pageNearbyChunks = await this.dataSource.query(
           `SELECT id, content, pageNumber, metadata
            FROM document_chunks
-           WHERE docId = $1 AND pageNumber BETWEEN $2 AND $3
-           ORDER BY pageNumber ASC
+           WHERE "docId" = $1 AND "pageNumber" BETWEEN $2 AND $3
+           ORDER BY "pageNumber" ASC
            LIMIT 4`,
           [docId, Math.max(1, currentPage - 1), currentPage + 2],
         );
@@ -85,19 +94,42 @@ export class AiService {
       }
     }
 
+    // 优先使用 pgvector 进行语义检索；旧数据或扩展未启用时继续走关键词兜底。
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+      if (queryEmbedding.length > 0) {
+        const vector = `[${queryEmbedding.join(',')}]`;
+        const vectorResults = await this.dataSource.query(
+          `SELECT id, content, "pageNumber" AS "pageNumber", metadata
+           FROM document_chunks
+           WHERE "docId" = $1 AND embedding IS NOT NULL
+           ORDER BY embedding <=> $2::vector
+           LIMIT $3`,
+          [docId, vector, topK],
+        );
+        (vectorResults || []).forEach((r: any) => results.push({
+          pageNumber: Number(r.pageNumber || 1),
+          content: r.content,
+          metadata: r.metadata,
+        }));
+      }
+    } catch (error) {
+      this.logger.warn(`向量检索不可用，将回退关键词检索: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     // 逻辑 B：中文停用词过滤提取核心搜索关键词
     const stopWords = new Set(['请', '总结', '一下', '什么是', '如何', '怎么', '有哪些', '分析', '核心', '观点', '的', '是', '在', '和', '与', '这', '那', '有', '说明', '讲了', '意思']);
     const rawTokens = query.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').split(/\s+/);
     const keywords = rawTokens.filter((w) => w.length >= 2 && !stopWords.has(w));
 
-    if (keywords.length > 0) {
+    if (keywords.length > 0 && results.length < topK) {
       for (const kw of keywords.slice(0, 3)) {
         try {
           const kwResults = await this.dataSource.query(
             `SELECT id, content, pageNumber, metadata
              FROM document_chunks
-           WHERE docId = $1 AND content ILIKE $2
-             ORDER BY pageNumber ASC
+             WHERE "docId" = $1 AND content ILIKE $2
+             ORDER BY "pageNumber" ASC
              LIMIT $3`,
              [docId, `%${kw}%`, Math.ceil(topK / keywords.length)],
           );
@@ -105,7 +137,7 @@ export class AiService {
           if (kwResults && kwResults.length > 0) {
             kwResults.forEach((r: any) => {
               // 避免重复引入相同 chunk
-              if (!results.some((existing) => existing.content === r.content)) {
+              if (results.length < topK && !results.some((existing) => existing.content === r.content)) {
                 results.push({
                   pageNumber: Number(r.pageNumber || 1),
                   content: r.content,
@@ -126,8 +158,8 @@ export class AiService {
         const fallbackResults = await this.dataSource.query(
           `SELECT id, content, pageNumber, metadata
            FROM document_chunks
-           WHERE docId = $1
-           ORDER BY pageNumber ASC
+           WHERE "docId" = $1
+           ORDER BY "pageNumber" ASC
            LIMIT $2`,
           [docId, topK],
         );
@@ -150,9 +182,10 @@ export class AiService {
    * 生成向量 Embedding
    */
   async generateEmbedding(text: string): Promise<number[]> {
+    if (!this.embeddingClient) return [];
     try {
-      const res = await this.openaiClient.embeddings.create({
-        model: 'text-embedding-3-small',
+      const res = await this.embeddingClient.embeddings.create({
+        model: this.configService.get<string>('EMBEDDING_MODEL', 'text-embedding-3-small'),
         input: text.slice(0, 2000),
       });
       return res.data[0]?.embedding || [];

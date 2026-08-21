@@ -58,10 +58,14 @@ FinanceNote/
 ```bash
 cd financenote-server
 npm install
-# 配置 .env 中的数据库连接与 DEEPSEEK_API_KEY
+# 配置 .env 中的 PostgreSQL 连接、DEEPSEEK_API_KEY 和 EMBEDDING_API_KEY
+# 首次部署执行 pgvector 迁移（需要 psql 已连接到 DB_DATABASE）
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" -f migrations/001-enable-pgvector.sql
 npm run start:dev
 ```
 后端服务默认运行在 `http://localhost:3000`。
+
+Embedding 未配置时系统仍可启动，但 AI 检索会自动回退到按页和关键词检索。配置 `EMBEDDING_API_KEY` 后，新上传文档会生成 1536 维向量并优先使用 pgvector 语义检索；已有文档需要重新处理才能补齐向量。
 
 ### 3. 前端启动 (financenote-web)
 ```bash

@@ -14,6 +14,8 @@ import { Repository } from 'typeorm';
 import { DocumentEntity, DocumentStatus, DocType } from './entities/document.entity';
 import { DocumentChunkEntity } from './entities/chunk.entity';
 import { UploadDocumentDto } from './dto/upload-document.dto';
+import { ConfigService } from '@nestjs/config';
+import { OpenAI } from 'openai';
 import * as fs from 'fs';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
 
@@ -26,7 +28,17 @@ export class DocumentService {
     private docRepository: Repository<DocumentEntity>,
     @InjectRepository(DocumentChunkEntity)
     private chunkRepository: Repository<DocumentChunkEntity>,
+    private configService: ConfigService,
   ) {}
+
+  private getEmbeddingClient(): OpenAI | null {
+    const apiKey = this.configService.get<string>('EMBEDDING_API_KEY');
+    if (!apiKey) return null;
+    return new OpenAI({
+      apiKey,
+      baseURL: this.configService.get<string>('EMBEDDING_BASE_URL') || this.configService.get<string>('DEEPSEEK_BASE_URL') || 'https://api.openai.com/v1',
+    });
+  }
 
   /**
    * 查询共享文档列表。文档按类型和关键词筛选，不按上传用户隔离。
@@ -147,6 +159,26 @@ export class DocumentService {
 
       if (chunksToInsert.length === 0) {
         throw new Error('文档未解析出可检索文本');
+      }
+
+      const embeddingClient = this.getEmbeddingClient();
+      if (embeddingClient) {
+        const embeddingModel = this.configService.get<string>('EMBEDDING_MODEL', 'text-embedding-3-small');
+        for (let i = 0; i < chunksToInsert.length; i += 32) {
+          const batch = chunksToInsert.slice(i, i + 32);
+          try {
+            const response = await embeddingClient.embeddings.create({
+              model: embeddingModel,
+              input: batch.map((chunk) => String(chunk.content).slice(0, 2000)),
+            });
+            response.data.forEach((item, index) => {
+              batch[index].embedding = item.embedding;
+            });
+          } catch (error) {
+            this.logger.warn(`[后台任务] embedding 生成失败，将保留关键词检索兜底: ${error instanceof Error ? error.message : String(error)}`);
+            break;
+          }
+        }
       }
 
       await this.chunkRepository.save(chunksToInsert);
