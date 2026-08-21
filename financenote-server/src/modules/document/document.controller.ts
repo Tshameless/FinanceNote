@@ -3,7 +3,7 @@
  * 
  * 路由：
  * - POST /api/documents/upload : 上传 PDF/EPUB 财报或书籍
- * - GET  /api/documents        : 查询用户上传的文档列表
+ * - GET  /api/documents        : 查询共享文档列表（支持类型筛选）
  * - GET  /api/documents/:id    : 获取单个文档详情
  * - DELETE /api/documents/:id : 删除文档
  */
@@ -92,22 +92,20 @@ export class DocumentController {
   }
 
   @Get()
-  @ApiOperation({ summary: '获取当前登录用户的文档列表' })
+  @ApiOperation({ summary: '获取共享文档列表（支持财报/书籍类型筛选）' })
   async getDocuments(
-    @CurrentUser() user: UserEntity,
     @Query('docType') docType?: DocType,
     @Query('search') search?: string,
   ) {
-    return this.documentService.findUserDocuments(user.id, docType, search);
+    return this.documentService.findDocuments(docType, search);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: '获取文档详细元数据' })
+  @ApiOperation({ summary: '获取共享文档详细元数据' })
   async getDocumentDetail(
     @Param('id') id: string,
-    @CurrentUser() user: UserEntity,
   ) {
-    return this.documentService.findOne(id, user.id);
+    return this.documentService.findOne(id);
   }
 
   @Delete(':id')

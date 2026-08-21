@@ -195,8 +195,14 @@ function extractPageNumbers(text: string): number[] {
 
 function formatAiText(text: string): string {
   if (!text) return '';
-  // 简单换行与格式化
-  return text.replace(/\n/g, '<br/>');
+  // AI 输出按纯文本渲染，避免模型内容被当作 HTML 执行。
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/\n/g, '<br/>');
 }
 
 function scrollToBottom() {

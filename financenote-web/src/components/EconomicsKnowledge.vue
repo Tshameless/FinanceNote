@@ -319,7 +319,13 @@ function triggerAiStream(queryText: string) {
 
 function formatAiText(text: string): string {
   if (!text) return '';
-  return text.replace(/\n/g, '<br/>');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/\n/g, '<br/>');
 }
 </script>
 

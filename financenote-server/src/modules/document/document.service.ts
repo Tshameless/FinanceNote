@@ -8,7 +8,7 @@
  * 4. 存入 chunks 数据库供 AI 研读精确定位
  */
 
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DocumentEntity, DocumentStatus, DocType } from './entities/document.entity';
@@ -29,10 +29,9 @@ export class DocumentService {
   ) {}
 
   /**
-   * 按用户 ID 与筛选条件列表检索文档
+   * 查询共享文档列表。文档按类型和关键词筛选，不按上传用户隔离。
    */
-  async findUserDocuments(
-    userId: number,
+  async findDocuments(
     docType?: DocType,
     search?: string,
   ): Promise<DocumentEntity[]> {
@@ -61,6 +60,11 @@ export class DocumentService {
     const doc = await this.docRepository.findOne({ where: { id } });
     if (!doc) {
       throw new NotFoundException(`ID 为 ${id} 的文档不存在`);
+    }
+
+    // 共享阅读不需要所有权校验；删除等归属操作可传入 userId 做额外校验。
+    if (userId !== undefined && doc.userId !== userId) {
+      throw new ForbiddenException('您无权修改该文档');
     }
 
     return doc;
@@ -115,6 +119,7 @@ export class DocumentService {
       const pdfDoc = await loadingTask.promise;
 
       const chunksToInsert: Partial<DocumentChunkEntity>[] = [];
+      let failedPages = 0;
 
       // 1..N 顺序严格遍历物理页码
       for (let p = 1; p <= pdfDoc.numPages; p++) {
@@ -135,17 +140,20 @@ export class DocumentService {
             }
           }
         } catch (e) {
-          // 单页容错
+          failedPages += 1;
+          this.logger.warn(`[后台任务] 文档 ${docId} 第 ${p} 页解析失败`);
         }
       }
 
-      if (chunksToInsert.length > 0) {
-        await this.chunkRepository.save(chunksToInsert);
+      if (chunksToInsert.length === 0) {
+        throw new Error('文档未解析出可检索文本');
       }
+
+      await this.chunkRepository.save(chunksToInsert);
 
       // 更新文档解析状态为完成 PROCESSED
       await this.docRepository.update(docId, { status: DocumentStatus.PROCESSED });
-      this.logger.log(`[后台任务] 文档 ${docId} 顺序解析完成，共切出 ${chunksToInsert.length} 个 100% 匹配页码的片段！`);
+      this.logger.log(`[后台任务] 文档 ${docId} 解析完成，共切出 ${chunksToInsert.length} 个片段，失败页数 ${failedPages}`);
     } catch (error) {
       this.logger.error(`[后台任务] 文档 ${docId} 解析失败: ${error.message}`);
       await this.docRepository.update(docId, { status: DocumentStatus.FAILED });

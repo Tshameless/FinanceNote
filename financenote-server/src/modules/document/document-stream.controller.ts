@@ -4,7 +4,7 @@
  * 核心安全机制：
  * 1. 【安全防爆破】禁用静态公开 HTTP 目录。所有书籍 PDF/EPUB 文件仅存储在后端私有受保护目录中。
  * 2. 【强制登录】必须携带合法的 JWT 令牌访问 `GET /api/documents/:id/stream`。
- * 3. 【越权检查】拦截试图读取他人私有书籍或财报的非法请求（403 Forbidden）。
+ * 3. 文档属于共享资料库，登录用户可以阅读已发布文档；写入/删除仍受所有权控制。
  * 4. 【HTTP 206 Range 支持】实现视频/大 PDF 文件的分段流式输出，完美适配 PDF.js / EPUB.js 的增量加载与快速翻页。
  */
 
@@ -13,7 +13,6 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { DocumentService } from './document.service';
-import { UserEntity } from '../user/user.entity';
 import * as fs from 'fs';
 
 @ApiTags('受保护资源传输 Stream')
@@ -27,7 +26,7 @@ export class DocumentStreamController {
   @ApiOperation({ summary: '受保护的书籍/财报文件流播放 (支持 206 Range 分片传输)' })
   async streamDocument(
     @Param('id') id: string,
-    @Req() req: Request & { user: UserEntity },
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     // 1. 查询公开文档；接口本身仍要求登录

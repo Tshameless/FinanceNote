@@ -161,12 +161,12 @@
     </main>
 
     <!-- 上传文档模态框 Dialog -->
-    <el-dialog v-model="showUploadDialog" title="上传财报 PDF 或 EPUB 书籍" width="540px">
+    <el-dialog v-model="showUploadDialog" title="上传财报 PDF 或书籍 PDF" width="540px">
       <el-form :model="uploadForm" label-position="top">
         <el-form-item label="文档类型">
           <el-radio-group v-model="uploadForm.docType">
             <el-radio label="FINANCIAL_REPORT">公司财报 (PDF)</el-radio>
-            <el-radio label="BOOK">深度书籍 (EPUB/PDF)</el-radio>
+            <el-radio label="BOOK">深度书籍 (PDF)</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -189,8 +189,8 @@
           </el-row>
         </template>
 
-        <el-form-item label="选择文件 (.pdf / .epub)">
-          <input type="file" accept=".pdf,.epub" @change="onFileChange" />
+        <el-form-item label="选择文件 (.pdf)">
+          <input type="file" accept=".pdf" @change="onFileChange" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -301,7 +301,7 @@ function onFileChange(e: Event) {
 
 async function submitUpload() {
   if (!selectedFile.value) {
-    ElMessage.warning('请选择一个 PDF 或 EPUB 文件！');
+    ElMessage.warning('请选择一个 PDF 文件！');
     return;
   }
 
@@ -309,7 +309,7 @@ async function submitUpload() {
   formData.append('file', selectedFile.value);
   formData.append('title', uploadForm.value.title || selectedFile.value.name);
   formData.append('docType', uploadForm.value.docType);
-  formData.append('fileFormat', selectedFile.value.name.endsWith('.epub') ? 'EPUB' : 'PDF');
+  formData.append('fileFormat', 'PDF');
   if (uploadForm.value.companyName) formData.append('companyName', uploadForm.value.companyName);
   if (uploadForm.value.stockCode) formData.append('stockCode', uploadForm.value.stockCode);
 

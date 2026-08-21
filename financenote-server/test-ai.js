@@ -2,8 +2,8 @@ const { OpenAI } = require('openai');
 
 async function testSenseNova() {
   const client = new OpenAI({
-    apiKey: 'sk-d6Ppb5eXarlKaXeaFKzqqzmwDNXlbpVl',
-    baseURL: 'https://token.sensenova.cn/v1',
+    apiKey: process.env.SENSENOVA_API_KEY,
+    baseURL: process.env.SENSENOVA_BASE_URL || 'https://token.sensenova.cn/v1',
   });
 
   try {

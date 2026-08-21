@@ -6,7 +6,7 @@ async function testMysql() {
       host: 'localhost',
       port: 3306,
       user: 'root',
-      password: '123456',
+      password: process.env.DB_PASSWORD,
     });
     console.log('✅ SUCCESS! Connected to MySQL on localhost:3306!');
     await connection.query('CREATE DATABASE IF NOT EXISTS financenote;');

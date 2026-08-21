@@ -6,7 +6,7 @@ async function recreateDb() {
       host: 'localhost',
       port: 3306,
       user: 'root',
-      password: '123456',
+      password: process.env.DB_PASSWORD,
     });
 
     console.log('🧹 重新创建 financenote 数据库 (默认 utf8mb4 字符集)...');
