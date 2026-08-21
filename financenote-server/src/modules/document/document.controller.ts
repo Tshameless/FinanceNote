@@ -66,6 +66,10 @@ export class DocumentController {
         if (!file.originalname.match(/\.(pdf|epub)$/i)) {
           return cb(new BadRequestException('格式错误：仅支持上传 PDF 或 EPUB 格式文件！'), false);
         }
+        const acceptedMimeTypes = new Set(['application/pdf', 'application/epub+zip']);
+        if (file.mimetype && !acceptedMimeTypes.has(file.mimetype)) {
+          return cb(new BadRequestException('文件 MIME 类型与支持的格式不匹配'), false);
+        }
         cb(null, true);
       },
     }),
@@ -82,13 +86,27 @@ export class DocumentController {
     const extension = extname(file.originalname).toLowerCase();
     const expectedFormat = extension === '.pdf' ? 'PDF' : 'EPUB';
     if (dto.fileFormat !== expectedFormat) {
+      this.removeUploadedFile(file.path);
       throw new BadRequestException('文件扩展名与 fileFormat 不一致');
     }
     if (expectedFormat === 'EPUB') {
+      this.removeUploadedFile(file.path);
       throw new BadRequestException('EPUB 解析尚未启用，请上传 PDF 文件');
     }
 
-    return this.documentService.createDocumentRecord(user.id, file, dto);
+    // 扩展名和 MIME 都可伪造，检查 PDF 文件头，避免把任意文件交给解析器。
+    if (!this.isPdfFile(file.path)) {
+      this.removeUploadedFile(file.path);
+      throw new BadRequestException('文件内容不是有效的 PDF');
+    }
+
+    try {
+      const document = await this.documentService.createDocumentRecord(user.id, file, dto);
+      return this.toPublicDocument(document);
+    } catch (error) {
+      this.removeUploadedFile(file.path);
+      throw error;
+    }
   }
 
   @Get()
@@ -97,7 +115,8 @@ export class DocumentController {
     @Query('docType') docType?: DocType,
     @Query('search') search?: string,
   ) {
-    return this.documentService.findDocuments(docType, search);
+    const documents = await this.documentService.findDocuments(docType, search);
+    return documents.map((document) => this.toPublicDocument(document));
   }
 
   @Get(':id')
@@ -105,7 +124,8 @@ export class DocumentController {
   async getDocumentDetail(
     @Param('id') id: string,
   ) {
-    return this.documentService.findOne(id);
+    const document = await this.documentService.findOne(id);
+    return this.toPublicDocument(document);
   }
 
   @Delete(':id')
@@ -116,5 +136,50 @@ export class DocumentController {
   ) {
     await this.documentService.removeDocument(id, user.id);
     return { message: '文档成功删除' };
+  }
+
+  /** 对外只返回展示所需字段，避免泄露磁盘路径和内部处理错误。 */
+  private toPublicDocument(document: any) {
+    return {
+      id: document.id,
+      title: document.title,
+      docType: document.docType,
+      fileFormat: document.fileFormat,
+      fileSize: document.fileSize,
+      stockCode: document.stockCode,
+      companyName: document.companyName,
+      reportYear: document.reportYear,
+      reportQuarter: document.reportQuarter,
+      author: document.author,
+      status: document.status,
+      processingProgress: document.processingProgress,
+      processingAttempts: document.processingAttempts,
+      processingError: document.status === 'FAILED' ? '文档解析失败，请重试或联系管理员' : undefined,
+      isPublic: document.isPublic,
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+    };
+  }
+
+  private isPdfFile(filePath: string): boolean {
+    let handle: number | undefined;
+    try {
+      handle = fs.openSync(filePath, 'r');
+      const header = Buffer.alloc(5);
+      const bytesRead = fs.readSync(handle, header, 0, header.length, 0);
+      return bytesRead === 5 && header.toString('ascii') === '%PDF-';
+    } catch {
+      return false;
+    } finally {
+      if (handle !== undefined) fs.closeSync(handle);
+    }
+  }
+
+  private removeUploadedFile(filePath: string): void {
+    try {
+      if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {
+      // 清理失败不覆盖原始校验错误，后续由运维任务清理孤儿文件。
+    }
   }
 }

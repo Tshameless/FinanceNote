@@ -30,17 +30,28 @@ export function streamAiAnswerFetch(
       if (!response.ok) {
         throw new Error(`HTTP 错误代码: ${response.status}`);
       }
-      const reader = response.body?.getReader();
+      const streamReader = response.body?.getReader();
+      if (!streamReader) throw new Error('服务器未返回可读取的流');
       const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let completed = false;
+
+      const finish = () => {
+        if (completed) return;
+        completed = true;
+        onDone();
+      };
 
       function read() {
-        reader?.read().then(({ done, value }) => {
+        streamReader!.read().then(({ done, value }) => {
           if (done) {
-            onDone();
+            buffer += decoder.decode();
+            finish();
             return;
           }
-          const rawData = decoder.decode(value, { stream: true });
-          const lines = rawData.split('\n');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || '';
 
           for (const line of lines) {
             if (line.startsWith('data:')) {
@@ -54,8 +65,9 @@ export function streamAiAnswerFetch(
                 } else if (parsed.type === 'text') {
                   onChunk(parsed.content || '');
                 } else if (parsed.type === 'done') {
-                  onDone();
+                  finish();
                 } else if (parsed.type === 'error') {
+                  completed = true;
                   onError(parsed.message);
                 }
               } catch (e) {}

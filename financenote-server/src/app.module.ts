@@ -3,7 +3,7 @@
  * 
  * 职责划分：
  * 1. 负责加载全系统的 `.env` 环境变量配置 (ConfigModule)
- * 2. 负责配置 TypeORM 与 MySQL 数据库连接
+ * 2. 负责配置 TypeORM 与 PostgreSQL 数据库连接
  * 3. 负责全局限流保护 (ThrottlerModule) 防止恶意频繁调用 API
  * 4. 负责导入各业务核心子模块：AuthModule, UserModule, DocumentModule, NoteModule, AiModule
  */

@@ -35,8 +35,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = Array.isArray(exceptionResponse.message)
         ? exceptionResponse.message.join('; ')
         : exceptionResponse.message || message;
-    } else if (exception instanceof Error) {
-      message = exception.message;
     }
 
     // 记录错误日志

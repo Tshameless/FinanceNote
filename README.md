@@ -59,7 +59,9 @@ FinanceNote/
 cd financenote-server
 npm install
 # 配置 .env 中的 PostgreSQL 连接、DEEPSEEK_API_KEY 和 EMBEDDING_API_KEY
-# 首次部署执行 pgvector 迁移（需要 psql 已连接到 DB_DATABASE）
+# 本地首次初始化表结构（需要数据库已创建且 pgvector 可用）
+npm run db:init
+# 已有环境升级时执行 pgvector 与文档处理状态迁移（需要 psql 已连接到 DB_DATABASE）
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" -f migrations/001-enable-pgvector.sql
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" -f migrations/002-document-processing-state.sql
 npm run start:dev
