@@ -8,9 +8,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentEntity } from '../document/entities/document.entity';
 import { AiService } from './ai.service';
 import { AiController } from './ai.controller';
+import { ConversationModule } from '../conversation/conversation.module';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([DocumentEntity])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([DocumentEntity]), ConversationModule],
   controllers: [AiController],
   providers: [AiService],
   exports: [AiService],

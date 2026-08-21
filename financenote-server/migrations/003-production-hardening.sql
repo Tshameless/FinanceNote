@@ -14,3 +14,27 @@ CREATE INDEX IF NOT EXISTS annotations_user_doc_page_idx
 
 CREATE INDEX IF NOT EXISTS documents_processing_status_idx
   ON documents (status) WHERE status IN ('PROCESSING', 'FAILED');
+
+CREATE TABLE IF NOT EXISTS conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "docId" VARCHAR(36) REFERENCES documents(id) ON DELETE SET NULL,
+  title VARCHAR(255) NOT NULL,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "conversationId" UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  role VARCHAR(16) NOT NULL,
+  content TEXT NOT NULL,
+  sources JSON,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS conversations_user_doc_updated_idx
+  ON conversations ("userId", "docId", "updatedAt" DESC);
+
+CREATE INDEX IF NOT EXISTS conversation_messages_conversation_created_idx
+  ON conversation_messages ("conversationId", "createdAt");

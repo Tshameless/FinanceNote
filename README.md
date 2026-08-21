@@ -70,6 +70,8 @@ npm run start:dev
 
 Embedding 未配置时系统仍可启动，但 AI 检索会自动回退到按页和关键词检索。配置 `EMBEDDING_API_KEY` 后，新上传文档会生成 1536 维向量并优先使用 pgvector 语义检索；已有文档需要重新处理才能补齐向量。
 
+配置 `REDIS_URL` 后，文档解析会使用 BullMQ 持久化队列并支持重试；未配置时保留单进程开发环境回退队列。
+
 ### 3. 前端启动 (financenote-web)
 ```bash
 cd financenote-web

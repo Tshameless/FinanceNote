@@ -20,6 +20,9 @@ import { UserModule } from './modules/user/user.module';
 import { DocumentModule } from './modules/document/document.module';
 import { NoteModule } from './modules/note/note.module';
 import { AiModule } from './modules/ai/ai.module';
+import { ConversationModule } from './modules/conversation/conversation.module';
+import { ConversationEntity } from './modules/conversation/entities/conversation.entity';
+import { ConversationMessageEntity } from './modules/conversation/entities/message.entity';
 
 // 导入实体 Entity
 import { UserEntity } from './modules/user/user.entity';
@@ -53,6 +56,8 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
           DocumentChunkEntity,
           NoteEntity,
           AnnotationEntity,
+          ConversationEntity,
+          ConversationMessageEntity,
         ],
         synchronize: false,
         logging: false,
@@ -71,6 +76,7 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
     DocumentModule,
     NoteModule,
     AiModule,
+    ConversationModule,
   ],
   providers: [
     {

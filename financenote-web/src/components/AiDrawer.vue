@@ -5,6 +5,10 @@
         <el-icon class="sparkle-icon"><Opportunity /></el-icon>
         <span>AI 财报/图书研读助手 (RAG)</span>
       </div>
+      <div class="header-actions">
+        <el-button text size="small" @click="exportMarkdown">导出 Markdown</el-button>
+        <el-button text size="small" @click="printSession">打印 / PDF</el-button>
+      </div>
       <el-tag size="small" type="success" effect="dark">商汤 SenseNova 驱动</el-tag>
     </div>
 
@@ -109,9 +113,10 @@
  * 3. 点击即可立刻控制 PDF 阅读器平滑滚动跳页定位！
  */
 
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, onMounted } from 'vue';
 import { Opportunity, Promotion } from '@element-plus/icons-vue';
 import { streamAiAnswerFetch, SourceInfo } from '../api/ai';
+import { getConversationsApi, getConversationMessagesApi } from '../api/conversation';
 
 const props = defineProps<{
   docId: string;
@@ -132,6 +137,20 @@ const messages = ref<Message[]>([]);
 const inputText = ref<string>('');
 const loading = ref<boolean>(false);
 const messageListRef = ref<HTMLDivElement | null>(null);
+const conversationId = ref<string | undefined>();
+
+onMounted(async () => {
+  const conversations = await getConversationsApi(props.docId);
+  const current = conversations[0];
+  if (!current) return;
+  conversationId.value = current.id;
+  const history = await getConversationMessagesApi(current.id);
+  messages.value = history.map((message) => ({
+    role: message.role,
+    text: message.content,
+    sources: message.sources || [],
+  }));
+});
 
 function handleSend() {
   if (!inputText.value.trim() || !props.docId || loading.value) return;
@@ -150,6 +169,8 @@ function handleSend() {
     props.docId,
     userQuery,
     props.currentPage,
+    conversationId.value,
+    (id) => { conversationId.value = id; },
     (sources) => {
       messages.value[assistantMsgIndex].sources = sources;
     },
@@ -203,6 +224,25 @@ function formatAiText(text: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
     .replace(/\n/g, '<br/>');
+}
+
+function exportMarkdown() {
+  const markdown = messages.value.map((message) => {
+    const role = message.role === 'user' ? '我' : 'AI';
+    const sources = message.sources?.length ? `\n\n出处: ${message.sources.map((s) => `[第 ${s.pageNumber} 页]`).join(' ')}` : '';
+    return `## ${role}\n\n${message.text}${sources}`;
+  }).join('\n\n');
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'financenote-reading-session.md';
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function printSession() {
+  window.print();
 }
 
 function scrollToBottom() {

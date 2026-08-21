@@ -5,13 +5,15 @@
 export interface SourceInfo {
   id?: string;
   pageNumber: number;
-  snippet: string;
+  snippet?: string;
 }
 
 export function streamAiAnswerFetch(
   docId: string | undefined,
   query: string,
   currentPage: number | undefined,
+  conversationId: string | undefined,
+  onConversationId: (id: string) => void,
   onSources: (sources: SourceInfo[]) => void,
   onChunk: (text: string) => void,
   onDone: () => void,
@@ -25,7 +27,7 @@ export function streamAiAnswerFetch(
       'Content-Type': 'application/json',
       Authorization: token ? `Bearer ${token}` : '',
     },
-    body: JSON.stringify({ docId: docId || undefined, query, currentPage, topK: 5 }),
+    body: JSON.stringify({ docId: docId || undefined, query, currentPage, conversationId, topK: 5 }),
   })
     .then((response) => {
       if (!response.ok) {
@@ -60,6 +62,7 @@ export function streamAiAnswerFetch(
                 const jsonStr = line.replace('data:', '').trim();
                 if (!jsonStr) continue;
                 const parsed = JSON.parse(jsonStr);
+                if (parsed.conversationId) onConversationId(parsed.conversationId);
 
                 if (parsed.type === 'sources') {
                   onSources(parsed.sources || []);

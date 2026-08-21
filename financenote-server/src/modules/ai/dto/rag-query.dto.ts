@@ -11,6 +11,11 @@ export class RagQueryDto {
   @IsUUID()
   docId?: string;
 
+  @ApiPropertyOptional({ description: '已有研读会话 ID；不传则自动创建' })
+  @IsOptional()
+  @IsUUID()
+  conversationId?: string;
+
   @ApiProperty({ description: '用户提问内容', example: '该公司的经营活动现金流量变动的主要原因是什么？' })
   @IsString()
   @IsNotEmpty()

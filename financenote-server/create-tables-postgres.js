@@ -86,11 +86,34 @@ async function createTables() {
         "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS conversations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "userId" INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        "docId" VARCHAR(36) REFERENCES documents(id) ON DELETE SET NULL,
+        title VARCHAR(255) NOT NULL,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS conversation_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "conversationId" UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        role VARCHAR(16) NOT NULL,
+        content TEXT NOT NULL,
+        sources JSON,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE INDEX IF NOT EXISTS document_chunks_doc_page_idx
         ON document_chunks ("docId", "pageNumber");
       CREATE INDEX IF NOT EXISTS document_chunks_embedding_hnsw_idx
         ON document_chunks USING hnsw (embedding vector_cosine_ops)
         WHERE embedding IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS conversations_user_doc_updated_idx
+        ON conversations ("userId", "docId", "updatedAt" DESC);
+      CREATE INDEX IF NOT EXISTS conversation_messages_conversation_created_idx
+        ON conversation_messages ("conversationId", "createdAt");
     `);
 
     await client.query('COMMIT');

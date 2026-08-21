@@ -18,6 +18,8 @@ import { ConfigService } from '@nestjs/config';
 import { OpenAI } from 'openai';
 import * as fs from 'fs';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
+import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
 
 @Injectable()
 export class DocumentService implements OnModuleInit {
@@ -27,6 +29,8 @@ export class DocumentService implements OnModuleInit {
   private activeJobs = 0;
   private readonly pendingJobs: Array<{ docId: string; filePath: string; attempt: number }> = [];
   private readonly queuedJobIds = new Set<string>();
+  private processingQueue?: Queue;
+  private processingWorker?: Worker;
 
   constructor(
     @InjectRepository(DocumentEntity)
@@ -37,6 +41,20 @@ export class DocumentService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    const redisUrl = this.configService.get<string>('REDIS_URL');
+    if (redisUrl) {
+      const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+      this.processingQueue = new Queue('document-processing', { connection });
+      this.processingWorker = new Worker('document-processing', async (job) => {
+        await this.processDocumentBackground(job.data.docId, job.data.filePath, job.attemptsMade);
+      }, { connection, concurrency: this.maxConcurrentJobs });
+      this.processingWorker.on('failed', (job, error) => {
+        this.logger.error(`文档任务 ${job?.id} 失败: ${error.message}`);
+        if (job && job.attemptsMade >= this.maxAttempts) {
+          void this.docRepository.update(job.data.docId, { status: DocumentStatus.FAILED, processingError: error.message });
+        }
+      });
+    }
     // 服务重启后恢复之前未完成的任务，避免上传记录永久停留在 PROCESSING。
     const processingDocs = await this.docRepository.find({ where: { status: DocumentStatus.PROCESSING } });
     for (const doc of processingDocs) {
@@ -130,6 +148,15 @@ export class DocumentService implements OnModuleInit {
    * 后台异步任务：按顺序 1..N 精确解析 PDF -> 提取文字 -> 滑动切块 -> 存入 chunk 表
    */
   private enqueueProcessing(docId: string, filePath: string, attempt: number) {
+    if (this.processingQueue) {
+      void this.processingQueue.add('parse-pdf', { docId, filePath }, {
+        jobId: docId,
+        attempts: this.maxAttempts,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: true,
+      });
+      return;
+    }
     if (this.queuedJobIds.has(docId)) return;
     this.queuedJobIds.add(docId);
     this.pendingJobs.push({ docId, filePath, attempt });
@@ -238,6 +265,10 @@ export class DocumentService implements OnModuleInit {
     } catch (error) {
       this.logger.error(`[后台任务] 文档 ${docId} 解析失败: ${error.message}`);
       const message = error instanceof Error ? error.message : String(error);
+      if (this.processingQueue) {
+        await this.docRepository.update(docId, { processingError: message });
+        throw error;
+      }
       if (attempt + 1 < this.maxAttempts) {
         const nextAttempt = attempt + 1;
         this.logger.warn(`[后台任务] 文档 ${docId} 将在重试后继续 (${nextAttempt + 1}/${this.maxAttempts})`);

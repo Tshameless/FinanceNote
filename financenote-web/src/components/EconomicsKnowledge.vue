@@ -303,6 +303,8 @@ function triggerAiStream(queryText: string) {
     undefined, // docId 为空，进入通用金融经济学大模型对话
     queryText,
     undefined,
+    undefined,
+    () => {},
     () => {},
     (chunk) => {
       aiAnswerText.value += chunk;
