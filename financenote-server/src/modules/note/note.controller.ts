@@ -8,7 +8,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity } from '../user/user.entity';
 import { NoteService } from './note.service';
-import { CreateNoteDto, CreateAnnotationDto } from './dto/create-note.dto';
+import { CreateNoteDto, CreateAnnotationDto, UpdateNoteDto } from './dto/create-note.dto';
 
 @ApiTags('笔记与划线标注 Note')
 @ApiBearerAuth('JWT-auth')
@@ -49,7 +49,7 @@ export class NoteController {
   async updateNote(
     @Param('id') id: string,
     @CurrentUser() user: UserEntity,
-    @Body() dto: Partial<CreateNoteDto>,
+    @Body() dto: UpdateNoteDto,
   ) {
     return this.noteService.updateNote(id, user.id, dto);
   }

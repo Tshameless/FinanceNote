@@ -11,7 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NoteEntity } from './entities/note.entity';
 import { AnnotationEntity } from './entities/annotation.entity';
-import { CreateNoteDto, CreateAnnotationDto } from './dto/create-note.dto';
+import { CreateNoteDto, CreateAnnotationDto, UpdateNoteDto } from './dto/create-note.dto';
 import { DocumentEntity } from '../document/entities/document.entity';
 
 @Injectable()
@@ -79,7 +79,7 @@ export class NoteService {
   /**
    * 更新笔记
    */
-  async updateNote(id: string, userId: number, dto: Partial<CreateNoteDto>): Promise<NoteEntity> {
+  async updateNote(id: string, userId: number, dto: UpdateNoteDto): Promise<NoteEntity> {
     const note = await this.getNoteDetail(id, userId);
     if (dto.title !== undefined) note.title = dto.title;
     if (dto.content !== undefined) note.content = dto.content;

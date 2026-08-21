@@ -2,7 +2,7 @@
  * 文件上传元数据传输对象 (UploadDocumentDto)
  */
 
-import { IsString, IsEnum, IsOptional, IsInt, Min } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsInt, Min, Max, IsNotEmpty, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DocType, FileFormat } from '../entities/document.entity';
 import { Type } from 'class-transformer';
@@ -10,6 +10,8 @@ import { Type } from 'class-transformer';
 export class UploadDocumentDto {
   @ApiProperty({ description: '文档标题', example: '贵州茅台 2024 年年度报告' })
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   title: string;
 
   @ApiProperty({ description: '文档分类', enum: DocType, example: DocType.FINANCIAL_REPORT })
@@ -23,26 +25,32 @@ export class UploadDocumentDto {
   @ApiPropertyOptional({ description: '股票代码 (财报用)', example: '600519.SH' })
   @IsOptional()
   @IsString()
+  @MaxLength(32)
   stockCode?: string;
 
   @ApiPropertyOptional({ description: '公司名称 (财报用)', example: '贵州茅台' })
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   companyName?: string;
 
   @ApiPropertyOptional({ description: '报告年份', example: 2024 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1900)
+  @Max(2200)
   reportYear?: number;
 
   @ApiPropertyOptional({ description: '报告季度', example: 'ANNUAL' })
   @IsOptional()
   @IsString()
+  @MaxLength(16)
   reportQuarter?: string;
 
   @ApiPropertyOptional({ description: '作者 (图书用)', example: '巴菲特' })
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   author?: string;
 }
