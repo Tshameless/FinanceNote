@@ -23,6 +23,11 @@ export interface SourceReference {
   metadata?: any;
 }
 
+export interface ConversationContextMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -64,12 +69,15 @@ export class AiService {
     query: string,
     topK = 5,
     currentPage?: number,
+    userId?: number,
   ): Promise<SourceReference[]> {
     const results: SourceReference[] = [];
     topK = Math.min(Math.max(Math.trunc(topK) || 5, 1), 20);
 
     const document = await this.documentRepository.findOne({ where: { id: docId } });
-    if (!document || document.status !== 'PROCESSED') return results;
+    if (!document || document.status !== 'PROCESSED' || (userId !== undefined && !document.isPublic && document.userId !== userId)) {
+      return results;
+    }
 
     // 优先逻辑 A：若用户传入了当前视口页码 currentPage (例如 42 页)，优先抽取 42 页及其前后 2 页切块
     if (currentPage && currentPage > 0) {
@@ -212,11 +220,13 @@ export class AiService {
     subject: Subject<any>,
     currentPage?: number,
     signal?: AbortSignal,
+    conversationHistory: ConversationContextMessage[] = [],
+    userId?: number,
   ) {
     try {
       let sources: SourceReference[] = [];
       if (docId) {
-        sources = await this.retrieveContextChunks(docId, query, topK, currentPage);
+        sources = await this.retrieveContextChunks(docId, query, topK, currentPage, userId);
         // 推送引用的出处页码给前端
         subject.next({
           type: 'sources',
@@ -252,11 +262,20 @@ ${contextPrompt || '暂无查找到匹配切块'}`
         : `你是一名精通金融学、微宏观经济学与财报研读的资深 AI 专家助手。请结合经济学原理、商业模式护城河与财报分析视角，回答用户的提问，保持专业、条理清晰并多使用 Markdown 列表结构。`;
 
       // Step 3: 调用商用大模型流式输出
-      const modelName = this.configService.get<string>('AI_MODEL_NAME', 'sensenova-6.7-flash-lite');
+      // DeepSeek 的 OpenAI 兼容端点默认使用 deepseek-chat；部署到其他供应商时通过 AI_MODEL_NAME 覆盖。
+      const modelName = this.configService.get<string>('AI_MODEL_NAME', 'deepseek-chat');
+      // 只携带最近几轮对话，并限制单条长度，避免历史消息耗尽模型上下文窗口。
+      const recentHistory = conversationHistory
+        .slice(-10)
+        .map((message) => ({
+          role: message.role,
+          content: message.content.slice(0, 4000),
+        }));
       const responseStream = await this.openaiClient.chat.completions.create({
         model: modelName,
         messages: [
           { role: 'system', content: systemPrompt },
+          ...recentHistory,
           { role: 'user', content: query },
         ],
         stream: true,

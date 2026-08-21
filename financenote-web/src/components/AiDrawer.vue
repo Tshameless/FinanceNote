@@ -9,7 +9,7 @@
         <el-button text size="small" @click="exportMarkdown">导出 Markdown</el-button>
         <el-button text size="small" @click="printSession">打印 / PDF</el-button>
       </div>
-      <el-tag size="small" type="success" effect="dark">商汤 SenseNova 驱动</el-tag>
+      <el-tag size="small" type="success" effect="dark">DeepSeek 驱动</el-tag>
     </div>
 
     <!-- 问答消息历史区域 -->

@@ -32,7 +32,7 @@ export class DocumentEntity {
   @PrimaryGeneratedColumn('uuid', { comment: '文档 UUID 唯一标识符' })
   id: string;
 
-  @Column({ type: 'int', comment: '文档上传者 User ID；文档内容对登录用户共享' })
+  @Column({ type: 'int', comment: '文档上传者 User ID' })
   userId: number;
 
   @ManyToOne(() => UserEntity, (user) => user.documents, { onDelete: 'CASCADE' })
@@ -81,7 +81,7 @@ export class DocumentEntity {
   @Column({ type: 'text', nullable: true, comment: '最近一次解析错误' })
   processingError: string;
 
-  @Column({ type: 'boolean', default: true, comment: '兼容字段；当前产品策略为登录用户共享文档' })
+  @Column({ type: 'boolean', default: false, comment: '是否对其他登录用户公开；默认私有' })
   isPublic: boolean;
 
   @CreateDateColumn({ comment: '上传创建时间' })

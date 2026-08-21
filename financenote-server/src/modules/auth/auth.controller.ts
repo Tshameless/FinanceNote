@@ -15,6 +15,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UserEntity } from '../user/user.entity';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('认证与账户模块 Auth')
 @Controller('auth')
@@ -23,6 +24,7 @@ export class AuthController {
 
   @Public() // 免去 JWT 校验
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
   @ApiOperation({ summary: '新用户账号注册' })
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
@@ -30,6 +32,7 @@ export class AuthController {
 
   @Public() // 免去 JWT 校验
   @Post('login')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: '用户账号登录' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);

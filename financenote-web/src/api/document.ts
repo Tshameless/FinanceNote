@@ -2,6 +2,7 @@ import request from './request';
 
 export interface DocumentItem {
   id: string;
+  ownerId: number;
   title: string;
   docType: 'FINANCIAL_REPORT' | 'BOOK';
   fileFormat: 'PDF' | 'EPUB';
@@ -15,6 +16,7 @@ export interface DocumentItem {
   processingProgress?: number;
   processingAttempts?: number;
   processingError?: string;
+  isPublic: boolean;
   createdAt: string;
 }
 
@@ -32,4 +34,8 @@ export function uploadDocumentApi(formData: FormData) {
 
 export function deleteDocumentApi(id: string) {
   return request.delete(`/documents/${id}`);
+}
+
+export function updateDocumentVisibilityApi(id: string, isPublic: boolean) {
+  return request.patch<DocumentItem>(`/documents/${id}/visibility`, { isPublic }) as unknown as Promise<DocumentItem>;
 }

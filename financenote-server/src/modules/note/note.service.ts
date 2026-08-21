@@ -30,7 +30,7 @@ export class NoteService {
    */
   async createNote(userId: number, dto: CreateNoteDto): Promise<NoteEntity> {
     if (dto.docId) {
-      await this.assertDocumentExists(dto.docId);
+      await this.assertDocumentExists(dto.docId, userId);
     }
     const note = this.noteRepository.create({
       userId,
@@ -101,7 +101,7 @@ export class NoteService {
    * 保存 PDF 原文选框与高亮
    */
   async createAnnotation(userId: number, dto: CreateAnnotationDto): Promise<AnnotationEntity> {
-    await this.assertDocumentExists(dto.docId);
+    await this.assertDocumentExists(dto.docId, userId);
     if (dto.noteId) {
       const note = await this.noteRepository.findOne({ where: { id: dto.noteId } });
       if (!note || note.userId !== userId) {
@@ -141,10 +141,13 @@ export class NoteService {
     });
   }
 
-  private async assertDocumentExists(docId: string): Promise<void> {
+  private async assertDocumentExists(docId: string, userId: number): Promise<void> {
     const document = await this.documentRepository.findOne({ where: { id: docId } });
     if (!document) {
       throw new NotFoundException(`ID 为 ${docId} 的文档不存在`);
+    }
+    if (!document.isPublic && document.userId !== userId) {
+      throw new ForbiddenException('该文档为私有资源，您无权关联笔记或批注');
     }
   }
 }

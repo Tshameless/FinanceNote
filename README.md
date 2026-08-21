@@ -12,7 +12,7 @@ FinanceNote 是一款专为**投资者、财务分析师及深度阅读者**设�
    - 必须用户登录（JWT 验证）后方可读取书籍与财报资源。
    - 物理文件不暴露静态 HTTP 目录，采用 NestJS `206 Byte-Range Stream` 按需分段流式输出，防盗链与越权下载。
 2. **🔐 商业大模型 API Key 绝对安全隔离**：
-   - API Key 仅保存在 NestJS 后端 `.env` 环境变量中。
+- API Key 仅保存在 NestJS 后端 `.env` 环境变量中。
    - 前端零感知，S2S 内部安全传输，结合 JWT 鉴权与 Throttler 限流防刷。
 3. **🤖 带有 [P42 页码出处] 引用的 AI 研读助手 (RAG)**：
    - 智能处理长篇财报与图书切块向量化，集成 PostgreSQL `pgvector` 存储 1536 维向量。
@@ -58,7 +58,7 @@ FinanceNote/
 ```bash
 cd financenote-server
 npm install
-# 配置 .env 中的 PostgreSQL 连接、DEEPSEEK_API_KEY 和 EMBEDDING_API_KEY
+# 配置 .env 中的 PostgreSQL 连接、DEEPSEEK_API_KEY、AI_MODEL_NAME 和 EMBEDDING_API_KEY
 # 本地首次初始化表结构（需要数据库已创建且 pgvector 可用）
 npm run db:init
 # 已有环境升级时执行 pgvector 与文档处理状态迁移（需要 psql 已连接到 DB_DATABASE）
@@ -71,6 +71,10 @@ npm run start:dev
 Embedding 未配置时系统仍可启动，但 AI 检索会自动回退到按页和关键词检索。配置 `EMBEDDING_API_KEY` 后，新上传文档会生成 1536 维向量并优先使用 pgvector 语义检索；已有文档需要重新处理才能补齐向量。
 
 配置 `REDIS_URL` 后，文档解析会使用 BullMQ 持久化队列并支持重试；未配置时保留单进程开发环境回退队列。
+
+文档解析默认限制为 2000 页（可通过 `MAX_DOCUMENT_PAGES` 调整），文本切块会分批写入数据库，避免长文档把全部 chunk 长时间保留在内存中。
+
+登录、注册、文档上传和 AI 接口均有独立限流。当前限流状态默认保存在应用进程内存中；多实例部署时应将限流存储切换为 Redis，避免每个实例分别计数。
 
 ### 3. 前端启动 (financenote-web)
 ```bash

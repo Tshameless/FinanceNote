@@ -74,7 +74,9 @@ export function streamAiAnswerFetch(
                   completed = true;
                   onError(parsed.message);
                 }
-              } catch (e) {}
+              } catch (error) {
+                console.warn('忽略格式无效的 SSE 数据:', error);
+              }
             }
           }
           read();

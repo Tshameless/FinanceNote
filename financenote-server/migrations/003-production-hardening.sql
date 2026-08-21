@@ -1,5 +1,11 @@
--- 生产加固：为共享文档检索、处理状态和用户笔记查询补充索引。
--- 脚本可重复执行，不改变现有数据。
+-- 生产加固：收紧文档默认可见性，并为文档检索、处理状态和用户笔记查询补充索引。
+-- 脚本可重复执行；其中可见性更新会将现有文档切换为私有。
+ALTER TABLE documents
+  ALTER COLUMN "isPublic" SET DEFAULT FALSE;
+
+UPDATE documents
+SET "isPublic" = FALSE
+WHERE "isPublic" IS DISTINCT FROM FALSE;
 CREATE INDEX IF NOT EXISTS documents_created_at_idx
   ON documents ("createdAt" DESC);
 

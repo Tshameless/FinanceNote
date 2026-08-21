@@ -82,7 +82,7 @@
         >
           <div class="page-num-label">第 {{ pageNum }} 页</div>
           <div class="canvas-viewport" :style="viewportStyle">
-            <canvas :id="`pdf-canvas-${pageNum}`"></canvas>
+            <canvas v-if="shouldRenderPage(pageNum)" :id="`pdf-canvas-${pageNum}`"></canvas>
             
             <!-- 触发定位高亮选框遮罩 -->
             <div
@@ -125,7 +125,11 @@ import { ElMessage } from 'element-plus';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useAuthStore } from '../stores/authStore';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+// Worker 与主包使用同一版本并随 Vite 构建发布，避免依赖外部 CDN。
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.js',
+  import.meta.url,
+).toString();
 
 const props = defineProps<{
   docId: string;
@@ -180,6 +184,10 @@ const highlightBoxStyle = computed(() => {
   };
 });
 
+function shouldRenderPage(pageNum: number): boolean {
+  return Math.abs(pageNum - currentPage.value) <= 3;
+}
+
 onMounted(() => {
   loadPdfStream();
 });
@@ -212,7 +220,9 @@ async function loadPdfStream() {
           dest: item.dest,
         }));
       }
-    } catch (e) {}
+    } catch (error) {
+      console.warn('PDF 目录加载失败:', error);
+    }
 
     if (renderMode.value === 'continuous') {
       renderContinuousPages();
@@ -263,9 +273,14 @@ function handleContinuousScroll() {
       const rect = el.getBoundingClientRect();
       if (rect.top <= parentRect.top + 250 && rect.bottom >= parentRect.top + 100) {
         currentPage.value = p;
-        renderPageCanvas(p);
-        if (p > 1) renderPageCanvas(p - 1);
-        if (p < totalPages.value) renderPageCanvas(p + 1);
+        for (const renderedPage of renderedPages) {
+          if (!shouldRenderPage(renderedPage)) renderedPages.delete(renderedPage);
+        }
+        nextTick(() => {
+          renderPageCanvas(p);
+          if (p > 1) renderPageCanvas(p - 1);
+          if (p < totalPages.value) renderPageCanvas(p + 1);
+        });
         break;
       }
     }
@@ -348,8 +363,8 @@ async function jumpToPage(pageNum: number, rect?: { x: number; y: number; width:
     isJumping = true;
 
     if (renderMode.value === 'continuous') {
-      await renderPageCanvas(pageNum);
       await nextTick();
+      await renderPageCanvas(pageNum);
       const el = document.getElementById(`pdf-page-container-${pageNum}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });

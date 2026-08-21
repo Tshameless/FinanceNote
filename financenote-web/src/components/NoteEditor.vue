@@ -100,13 +100,14 @@ async function loadAnnotations() {
     annotations.value = await getDocumentAnnotationsApi(props.docId);
   } catch (e) {
     console.error(e);
+    ElMessage.warning('高亮批注加载失败，请稍后重试');
   }
 }
 
 function onContentInput() {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    autoSave();
+    void autoSave().catch(() => undefined);
   }, 2000);
 }
 
@@ -126,11 +127,15 @@ async function autoSave() {
       // 后续自动保存必须更新同一条笔记，避免每次输入都创建新记录。
       persistedNoteId.value = savedNote.id;
     }
+  } catch (error) {
+    console.error('笔记保存失败:', error);
+    ElMessage.error('笔记保存失败，请稍后重试');
+    throw error;
   } finally {
     saving.value = false;
     if (saveAgain) {
       saveAgain = false;
-      void autoSave();
+      void autoSave().catch(() => undefined);
     }
   }
 }
@@ -147,18 +152,23 @@ async function loadExistingNote() {
     }
   } catch (error) {
     console.error(error);
+    ElMessage.warning('笔记加载失败，请稍后重试');
   }
 }
 
 async function saveNote() {
-  await autoSave();
-  ElMessage.success('笔记保存成功！');
+  try {
+    await autoSave();
+    ElMessage.success('笔记保存成功！');
+  } catch {
+    // autoSave 已提示失败原因。
+  }
 }
 
 function insertAnnotationToNote(anno: AnnotationItem) {
   const quoteSnippet = `\n\n> 📄 **财报原文引述 [第 ${anno.pageNum} 页]**:\n> "${anno.selectedText}"\n\n`;
   content.value += quoteSnippet;
-  autoSave();
+  void autoSave().catch(() => undefined);
   ElMessage.success('已插入财报原文锚点引用！');
 }
 

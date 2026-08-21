@@ -63,7 +63,7 @@
 ## 4. 数据库实体定义 (ERD Overview)
 
 - **`users`**：`id`, `username`, `email`, `passwordHash`, `createdAt`
-- **`documents`**：`id`, `userId`, `title`, `docType` (FINANCIAL_REPORT/BOOK), `fileFormat`, `filePath`, `status`
+- **`documents`**：`id`, `userId`, `isPublic`, `title`, `docType` (FINANCIAL_REPORT/BOOK), `fileFormat`, `filePath`, `status`
 - **`document_chunks`**：`id`, `docId`, `pageNumber`, `content`, `metadata`, `embedding` (vector)
 - **`notes`**：`id`, `userId`, `docId`, `title`, `content`, `tags`
 - **`annotations`**：`id`, `userId`, `docId`, `noteId`, `pageNum`, `rectCoords`, `selectedText`, `color`

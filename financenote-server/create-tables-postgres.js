@@ -47,7 +47,7 @@ async function createTables() {
         "processingAttempts" INTEGER NOT NULL DEFAULT 0,
         "processingProgress" INTEGER NOT NULL DEFAULT 0,
         "processingError" TEXT,
-        "isPublic" BOOLEAN NOT NULL DEFAULT TRUE,
+        "isPublic" BOOLEAN NOT NULL DEFAULT FALSE,
         "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );

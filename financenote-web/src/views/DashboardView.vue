@@ -112,6 +112,11 @@
                 <el-tooltip v-if="doc.status === 'FAILED' && doc.processingError" :content="doc.processingError" placement="top">
                   <span class="processing-error">查看错误</span>
                 </el-tooltip>
+                <el-tooltip v-if="doc.ownerId === authStore.user?.id" :content="doc.isPublic ? '取消公开' : '公开文档'" placement="top">
+                  <el-button size="small" text @click.stop="handleToggleVisibility(doc)">
+                    <el-icon><Share v-if="doc.isPublic" /><Lock v-else /></el-icon>
+                  </el-button>
+                </el-tooltip>
                 <el-button size="small" type="danger" text @click.stop="handleDeleteDoc(doc.id)">删除</el-button>
               </div>
             </div>
@@ -216,11 +221,11 @@
 
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Collection, TrendCharts, Notebook, Reading, SwitchButton, Search, Upload, Loading, Back } from '@element-plus/icons-vue';
+import { Collection, TrendCharts, Notebook, Reading, SwitchButton, Search, Upload, Loading, Back, Lock, Share } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useAuthStore } from '../stores/authStore';
 import { useDocumentStore } from '../stores/documentStore';
-import { uploadDocumentApi, deleteDocumentApi, DocumentItem } from '../api/document';
+import { uploadDocumentApi, deleteDocumentApi, updateDocumentVisibilityApi, DocumentItem } from '../api/document';
 import { createAnnotationApi } from '../api/note';
 import PdfViewer from '../components/PdfViewer.vue';
 import AiDrawer from '../components/AiDrawer.vue';
@@ -292,7 +297,19 @@ async function handleDeleteDoc(id: string) {
     await deleteDocumentApi(id);
     ElMessage.success('文档删除成功！');
     docStore.fetchDocuments();
-  } catch (e) {}
+  } catch {
+    ElMessage.error('文档删除失败，请稍后重试');
+  }
+}
+
+async function handleToggleVisibility(doc: DocumentItem) {
+  try {
+    const updated = await updateDocumentVisibilityApi(doc.id, !doc.isPublic);
+    Object.assign(doc, updated);
+    ElMessage.success(updated.isPublic ? '文档已公开' : '文档已设为私有');
+  } catch (e) {
+    // request 拦截器已显示服务端错误。
+  }
 }
 
 function onFileChange(e: Event) {
@@ -322,6 +339,8 @@ async function submitUpload() {
     ElMessage.success('文件上传成功，正在后台异步解析切块！');
     showUploadDialog.value = false;
     docStore.fetchDocuments();
+  } catch {
+    ElMessage.error('文件上传失败，请检查文件后重试');
   } finally {
     uploading.value = false;
   }
@@ -351,7 +370,9 @@ async function handleAddAnnotation(data: {
     if (noteEditorRef.value) {
       noteEditorRef.value.loadAnnotations();
     }
-  } catch (e) {}
+  } catch {
+    ElMessage.error('批注保存失败，请稍后重试');
+  }
 }
 
 function handleLogout() {

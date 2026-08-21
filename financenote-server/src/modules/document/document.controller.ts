@@ -3,7 +3,7 @@
  * 
  * 路由：
  * - POST /api/documents/upload : 上传 PDF/EPUB 财报或书籍
- * - GET  /api/documents        : 查询共享文档列表（支持类型筛选）
+ * - GET  /api/documents        : 查询当前用户可访问的文档列表（支持类型筛选）
  * - GET  /api/documents/:id    : 获取单个文档详情
  * - DELETE /api/documents/:id : 删除文档
  */
@@ -13,6 +13,7 @@ import {
   Post,
   Get,
   Delete,
+  Patch,
   Param,
   Query,
   Body,
@@ -31,7 +32,9 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity } from '../user/user.entity';
 import { DocumentService } from './document.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
+import { UpdateDocumentVisibilityDto } from './dto/update-document-visibility.dto';
 import { DocType } from './entities/document.entity';
+import { Throttle } from '@nestjs/throttler';
 
 // 自定义 multer 存储策略，将物理文件存放在受保护的磁盘目录中
 const multerStorage = diskStorage({
@@ -56,6 +59,7 @@ export class DocumentController {
   constructor(private readonly documentService: DocumentService) {}
 
   @Post('upload')
+  @Throttle({ default: { limit: 10, ttl: 3600000 } })
   @ApiOperation({ summary: '上传财报 PDF 或 EPUB 书籍资源' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
@@ -114,21 +118,23 @@ export class DocumentController {
   }
 
   @Get()
-  @ApiOperation({ summary: '获取共享文档列表（支持财报/书籍类型筛选）' })
+  @ApiOperation({ summary: '获取当前用户可访问的文档列表（支持财报/书籍类型筛选）' })
   async getDocuments(
+    @CurrentUser() user: UserEntity,
     @Query('docType') docType?: DocType,
     @Query('search') search?: string,
   ) {
-    const documents = await this.documentService.findDocuments(docType, search);
+    const documents = await this.documentService.findDocuments(docType, search, user.id);
     return documents.map((document) => this.toPublicDocument(document));
   }
 
   @Get(':id')
-  @ApiOperation({ summary: '获取共享文档详细元数据' })
+  @ApiOperation({ summary: '获取当前用户可访问的文档详细元数据' })
   async getDocumentDetail(
     @Param('id') id: string,
+    @CurrentUser() user: UserEntity,
   ) {
-    const document = await this.documentService.findOne(id);
+    const document = await this.documentService.findOne(id, user.id);
     return this.toPublicDocument(document);
   }
 
@@ -142,10 +148,22 @@ export class DocumentController {
     return { message: '文档成功删除' };
   }
 
+  @Patch(':id/visibility')
+  @ApiOperation({ summary: '修改文档公开状态（仅上传者）' })
+  async updateVisibility(
+    @Param('id') id: string,
+    @CurrentUser() user: UserEntity,
+    @Body() dto: UpdateDocumentVisibilityDto,
+  ) {
+    const document = await this.documentService.updateVisibility(id, user.id, dto.isPublic);
+    return this.toPublicDocument(document);
+  }
+
   /** 对外只返回展示所需字段，避免泄露磁盘路径和内部处理错误。 */
   private toPublicDocument(document: any) {
     return {
       id: document.id,
+      ownerId: document.userId,
       title: document.title,
       docType: document.docType,
       fileFormat: document.fileFormat,
