@@ -12,6 +12,7 @@ import { Repository } from 'typeorm';
 import { NoteEntity } from './entities/note.entity';
 import { AnnotationEntity } from './entities/annotation.entity';
 import { CreateNoteDto, CreateAnnotationDto } from './dto/create-note.dto';
+import { DocumentEntity } from '../document/entities/document.entity';
 
 @Injectable()
 export class NoteService {
@@ -20,12 +21,17 @@ export class NoteService {
     private noteRepository: Repository<NoteEntity>,
     @InjectRepository(AnnotationEntity)
     private annotationRepository: Repository<AnnotationEntity>,
+    @InjectRepository(DocumentEntity)
+    private documentRepository: Repository<DocumentEntity>,
   ) {}
 
   /**
    * 创建新笔记
    */
   async createNote(userId: number, dto: CreateNoteDto): Promise<NoteEntity> {
+    if (dto.docId) {
+      await this.assertDocumentExists(dto.docId);
+    }
     const note = this.noteRepository.create({
       userId,
       title: dto.title,
@@ -95,6 +101,16 @@ export class NoteService {
    * 保存 PDF 原文选框与高亮
    */
   async createAnnotation(userId: number, dto: CreateAnnotationDto): Promise<AnnotationEntity> {
+    await this.assertDocumentExists(dto.docId);
+    if (dto.noteId) {
+      const note = await this.noteRepository.findOne({ where: { id: dto.noteId } });
+      if (!note || note.userId !== userId) {
+        throw new ForbiddenException('批注关联的笔记不存在或不属于当前用户');
+      }
+    }
+    if (dto.pageNum < 1) {
+      throw new ForbiddenException('页码必须从 1 开始');
+    }
     const annotation = this.annotationRepository.create({
       userId,
       docId: dto.docId,
@@ -116,5 +132,12 @@ export class NoteService {
       where: { docId, userId },
       order: { pageNum: 'ASC', createdAt: 'ASC' },
     });
+  }
+
+  private async assertDocumentExists(docId: string): Promise<void> {
+    const document = await this.documentRepository.findOne({ where: { id: docId } });
+    if (!document) {
+      throw new NotFoundException(`ID 为 ${docId} 的文档不存在`);
+    }
   }
 }

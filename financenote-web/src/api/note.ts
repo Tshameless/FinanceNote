@@ -22,15 +22,15 @@ export interface AnnotationItem {
 }
 
 export function getNotesApi(docId?: string) {
-  return request.get<NoteItem[]>('/notes', { params: { docId } });
+  return request.get<NoteItem[]>('/notes', { params: { docId } }) as unknown as Promise<NoteItem[]>;
 }
 
 export function createNoteApi(data: Partial<NoteItem>) {
-  return request.post<NoteItem>('/notes', data);
+  return request.post<NoteItem>('/notes', data) as unknown as Promise<NoteItem>;
 }
 
 export function updateNoteApi(id: string, data: Partial<NoteItem>) {
-  return request.put<NoteItem>(`/notes/${id}`, data);
+  return request.put<NoteItem>(`/notes/${id}`, data) as unknown as Promise<NoteItem>;
 }
 
 export function deleteNoteApi(id: string) {
@@ -38,9 +38,9 @@ export function deleteNoteApi(id: string) {
 }
 
 export function createAnnotationApi(data: Partial<AnnotationItem>) {
-  return request.post<AnnotationItem>('/notes/annotations', data);
+  return request.post<AnnotationItem>('/notes/annotations', data) as unknown as Promise<AnnotationItem>;
 }
 
 export function getDocumentAnnotationsApi(docId: string) {
-  return request.get<AnnotationItem[]>(`/notes/annotations/document/${docId}`);
+  return request.get<AnnotationItem[]>(`/notes/annotations/document/${docId}`) as unknown as Promise<AnnotationItem[]>;
 }

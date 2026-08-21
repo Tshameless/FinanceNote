@@ -8,9 +8,10 @@ import { NoteEntity } from './entities/note.entity';
 import { AnnotationEntity } from './entities/annotation.entity';
 import { NoteService } from './note.service';
 import { NoteController } from './note.controller';
+import { DocumentEntity } from '../document/entities/document.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([NoteEntity, AnnotationEntity])],
+  imports: [TypeOrmModule.forFeature([NoteEntity, AnnotationEntity, DocumentEntity])],
   controllers: [NoteController],
   providers: [NoteService],
   exports: [NoteService],

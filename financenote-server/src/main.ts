@@ -25,7 +25,7 @@ async function bootstrap() {
 
   // 1. 开启 CORS 跨域支持 (为 Vue 3 前端提供安全访问)
   app.enableCors({
-    origin: true,
+    origin: (process.env.WEB_ORIGIN || 'http://localhost:5173').split(','),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

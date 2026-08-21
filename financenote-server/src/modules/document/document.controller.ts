@@ -79,6 +79,15 @@ export class DocumentController {
       throw new BadRequestException('请选择上传的文件！');
     }
 
+    const extension = extname(file.originalname).toLowerCase();
+    const expectedFormat = extension === '.pdf' ? 'PDF' : 'EPUB';
+    if (dto.fileFormat !== expectedFormat) {
+      throw new BadRequestException('文件扩展名与 fileFormat 不一致');
+    }
+    if (expectedFormat === 'EPUB') {
+      throw new BadRequestException('EPUB 解析尚未启用，请上传 PDF 文件');
+    }
+
     return this.documentService.createDocumentRecord(user.id, file, dto);
   }
 

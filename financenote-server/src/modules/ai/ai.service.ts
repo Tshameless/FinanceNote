@@ -12,6 +12,9 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { OpenAI } from 'openai';
 import { Subject } from 'rxjs';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DocumentEntity } from '../document/entities/document.entity';
 
 export interface SourceReference {
   pageNumber: number;
@@ -27,9 +30,14 @@ export class AiService {
   constructor(
     private configService: ConfigService,
     private dataSource: DataSource,
+    @InjectRepository(DocumentEntity)
+    private documentRepository: Repository<DocumentEntity>,
   ) {
-    const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY') || 'sk-demo';
-    const baseURL = this.configService.get<string>('DEEPSEEK_BASE_URL') || 'https://token.sensenova.cn/v1';
+    const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
+    if (!apiKey) {
+      throw new Error('DEEPSEEK_API_KEY 未配置');
+    }
+    const baseURL = this.configService.get<string>('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1';
 
     this.openaiClient = new OpenAI({
       apiKey,
@@ -48,13 +56,16 @@ export class AiService {
   ): Promise<SourceReference[]> {
     const results: SourceReference[] = [];
 
+    const document = await this.documentRepository.findOne({ where: { id: docId } });
+    if (!document) return results;
+
     // 优先逻辑 A：若用户传入了当前视口页码 currentPage (例如 42 页)，优先抽取 42 页及其前后 2 页切块
     if (currentPage && currentPage > 0) {
       try {
         const pageNearbyChunks = await this.dataSource.query(
           `SELECT id, content, pageNumber, metadata
            FROM document_chunks
-           WHERE docId = ? AND pageNumber BETWEEN ? AND ?
+           WHERE docId = $1 AND pageNumber BETWEEN $2 AND $3
            ORDER BY pageNumber ASC
            LIMIT 4`,
           [docId, Math.max(1, currentPage - 1), currentPage + 2],
@@ -85,10 +96,10 @@ export class AiService {
           const kwResults = await this.dataSource.query(
             `SELECT id, content, pageNumber, metadata
              FROM document_chunks
-             WHERE docId = ? AND content LIKE ?
+           WHERE docId = $1 AND content ILIKE $2
              ORDER BY pageNumber ASC
-             LIMIT ?`,
-            [docId, `%${kw}%`, Math.ceil(topK / keywords.length)],
+             LIMIT $3`,
+             [docId, `%${kw}%`, Math.ceil(topK / keywords.length)],
           );
 
           if (kwResults && kwResults.length > 0) {
@@ -103,7 +114,9 @@ export class AiService {
               }
             });
           }
-        } catch (e) {}
+        } catch (e) {
+          this.logger.warn(`关键词检索失败: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
     }
 
@@ -113,9 +126,9 @@ export class AiService {
         const fallbackResults = await this.dataSource.query(
           `SELECT id, content, pageNumber, metadata
            FROM document_chunks
-           WHERE docId = ?
+           WHERE docId = $1
            ORDER BY pageNumber ASC
-           LIMIT ?`,
+           LIMIT $2`,
           [docId, topK],
         );
         (fallbackResults || []).forEach((r: any) => {
@@ -125,7 +138,9 @@ export class AiService {
             metadata: r.metadata,
           });
         });
-      } catch (e) {}
+      } catch (e) {
+        this.logger.warn(`兜底检索失败: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     return results.slice(0, topK);
@@ -142,6 +157,7 @@ export class AiService {
       });
       return res.data[0]?.embedding || [];
     } catch (err) {
+      this.logger.warn(`Embedding 生成失败: ${err instanceof Error ? err.message : String(err)}`);
       return [];
     }
   }

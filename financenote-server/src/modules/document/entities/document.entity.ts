@@ -72,7 +72,7 @@ export class DocumentEntity {
   @Column({ type: 'enum', enum: DocumentStatus, default: DocumentStatus.PROCESSING, comment: '后台向量解析状态' })
   status: DocumentStatus;
 
-  @Column({ type: 'boolean', default: false, comment: '是否为系统公开公共资源' })
+  @Column({ type: 'boolean', default: true, comment: '文档是否公开；当前产品策略为全部公开' })
   isPublic: boolean;
 
   @CreateDateColumn({ comment: '上传创建时间' })

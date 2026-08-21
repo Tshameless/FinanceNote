@@ -36,17 +36,17 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
       envFilePath: ['.env.local', '.env'],
     }),
 
-    // 2. MySQL / PostgreSQL 数据库连接模块
+    // 2. PostgreSQL 数据库连接模块
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        type: (configService.get<string>('DB_TYPE') || 'mysql') as any,
+        type: 'postgres',
         host: configService.get<string>('DB_HOST', 'localhost'),
-        port: configService.get<number>('DB_PORT', 3306),
-        username: configService.get<string>('DB_USERNAME', 'root'),
-        password: configService.get<string>('DB_PASSWORD', '123456'),
-        database: configService.get<string>('DB_DATABASE', 'financenote'),
+        port: configService.get<number>('DB_PORT', 5432),
+        username: configService.get<string>('DB_USERNAME'),
+        password: configService.get<string>('DB_PASSWORD'),
+        database: configService.get<string>('DB_DATABASE'),
         entities: [
           UserEntity,
           DocumentEntity,
@@ -54,7 +54,7 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
           NoteEntity,
           AnnotationEntity,
         ],
-        synchronize: true, // 自动增量创建更新数据库表与字段
+        synchronize: false,
         logging: false,
       }),
     }),

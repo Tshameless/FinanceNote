@@ -8,7 +8,7 @@
  * 4. 【HTTP 206 Range 支持】实现视频/大 PDF 文件的分段流式输出，完美适配 PDF.js / EPUB.js 的增量加载与快速翻页。
  */
 
-import { Controller, Get, Param, Req, Res, UseGuards, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Param, Req, Res, UseGuards, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -30,16 +30,10 @@ export class DocumentStreamController {
     @Req() req: Request & { user: UserEntity },
     @Res() res: Response,
   ) {
-    const userId = req.user.id;
-
-    // 1. 查询文档并验证所有权
+    // 1. 查询公开文档；接口本身仍要求登录
     const doc = await this.documentService.findOne(id);
     if (!doc) {
       throw new NotFoundException('请求的书籍或财报文件不存在');
-    }
-
-    if (doc.userId !== userId && !doc.isPublic) {
-      throw new ForbiddenException('警告：您无权阅读该受保护的书籍/财报文件！');
     }
 
     const filePath = doc.filePath;
@@ -56,9 +50,17 @@ export class DocumentStreamController {
 
     // 2. 处理 HTTP 206 Range 分片流式传输 (PDF.js 渐进式加载核心)
     if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      if (!match || (!match[1] && !match[2])) {
+        throw new BadRequestException('Range 格式无效');
+      }
+      const start = match[1] ? Number(match[1]) : Math.max(0, fileSize - Number(match[2]));
+      const requestedEnd = match[2] && match[1] ? Number(match[2]) : fileSize - 1;
+      const end = Math.min(requestedEnd, fileSize - 1);
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= fileSize) {
+        res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end();
+        return;
+      }
       const chunkSize = end - start + 1;
 
       const fileStream = fs.createReadStream(filePath, { start, end });
