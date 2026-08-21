@@ -3,7 +3,7 @@
  * 
  * 对应数据库表：`documents`
  * 记录用户上传的财报 PDF 或电子书 (EPUB/PDF) 的元数据，
- * 包括所有者 userId、股票代码、报告年份、季度、物理保存路径与解析处理状态。
+ * 包括上传者 userId、股票代码、报告年份、季度、物理保存路径与解析处理状态。
  */
 
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
@@ -32,7 +32,7 @@ export class DocumentEntity {
   @PrimaryGeneratedColumn('uuid', { comment: '文档 UUID 唯一标识符' })
   id: string;
 
-  @Column({ type: 'int', comment: '文档所有者 User ID' })
+  @Column({ type: 'int', comment: '文档上传者 User ID；文档内容对登录用户共享' })
   userId: number;
 
   @ManyToOne(() => UserEntity, (user) => user.documents, { onDelete: 'CASCADE' })
@@ -81,7 +81,7 @@ export class DocumentEntity {
   @Column({ type: 'text', nullable: true, comment: '最近一次解析错误' })
   processingError: string;
 
-  @Column({ type: 'boolean', default: true, comment: '文档是否公开；当前产品策略为全部公开' })
+  @Column({ type: 'boolean', default: true, comment: '兼容字段；当前产品策略为登录用户共享文档' })
   isPublic: boolean;
 
   @CreateDateColumn({ comment: '上传创建时间' })

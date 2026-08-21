@@ -132,7 +132,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'onAddAnnotation', data: { pageNum: number; text: string }): void;
+  (e: 'onAddAnnotation', data: {
+    pageNum: number;
+    text: string;
+    rectCoords: { x: number; y: number; width: number; height: number };
+  }): void;
 }>();
 
 const authStore = useAuthStore();
@@ -371,14 +375,35 @@ async function jumpToDest(dest: any) {
 }
 
 function createSelectionAnnotation() {
-  const selectionText = window.getSelection()?.toString().trim();
+  const selection = window.getSelection();
+  const selectionText = selection?.toString().trim();
   if (!selectionText) {
     ElMessage.info('请先用鼠标在 PDF 原文中框选一段文本！');
     return;
   }
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  const selectionRect = range?.getBoundingClientRect();
+  const pageElement = document.getElementById(`pdf-page-container-${currentPage.value}`) || canvasRef.value;
+  const pageRect = pageElement?.getBoundingClientRect();
+  let rectCoords = { x: 0.1, y: 0.2, width: 0.8, height: 0.05 };
+  if (selectionRect && pageRect && pageRect.width > 0 && pageRect.height > 0) {
+    const left = Math.max(pageRect.left, selectionRect.left);
+    const top = Math.max(pageRect.top, selectionRect.top);
+    const right = Math.min(pageRect.right, selectionRect.right);
+    const bottom = Math.min(pageRect.bottom, selectionRect.bottom);
+    if (right > left && bottom > top) {
+      rectCoords = {
+        x: (left - pageRect.left) / pageRect.width,
+        y: (top - pageRect.top) / pageRect.height,
+        width: (right - left) / pageRect.width,
+        height: (bottom - top) / pageRect.height,
+      };
+    }
+  }
   emit('onAddAnnotation', {
     pageNum: currentPage.value,
     text: selectionText,
+    rectCoords,
   });
   ElMessage.success('已成功选中文本并生成高亮锚点！');
 }

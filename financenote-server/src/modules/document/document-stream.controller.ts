@@ -2,10 +2,10 @@
  * 受保护的文件流播放控制器 (DocumentStreamController)
  * 
  * 核心安全机制：
- * 1. 【安全防爆破】禁用静态公开 HTTP 目录。所有书籍 PDF/EPUB 文件仅存储在后端私有受保护目录中。
+ * 1. 【安全防爆破】禁用静态公开 HTTP 目录。共享文档文件仅存储在后端私有受保护目录中。
  * 2. 【强制登录】必须携带合法的 JWT 令牌访问 `GET /api/documents/:id/stream`。
- * 3. 文档属于共享资料库，登录用户可以阅读已发布文档；写入/删除仍受所有权控制。
- * 4. 【HTTP 206 Range 支持】实现视频/大 PDF 文件的分段流式输出，完美适配 PDF.js / EPUB.js 的增量加载与快速翻页。
+ * 3. 文档属于共享资料库，登录用户可以阅读；删除仍受上传者归属控制。
+ * 4. 【HTTP 206 Range 支持】实现大 PDF 文件的分段流式输出，适配 PDF.js 增量加载与快速翻页。
  */
 
 import { Controller, Get, Param, Req, Res, UseGuards, NotFoundException, BadRequestException } from '@nestjs/common';
@@ -29,7 +29,7 @@ export class DocumentStreamController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    // 1. 查询公开文档；接口本身仍要求登录
+    // 1. 查询共享文档；接口本身仍要求登录
     const doc = await this.documentService.findOne(id);
     if (!doc) {
       throw new NotFoundException('请求的书籍或财报文件不存在');

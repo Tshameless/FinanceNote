@@ -52,10 +52,10 @@
  * 2. 显示当前文档中的【财报划线高亮卡片】，点击可一键嵌入 Markdown 正文成为财报锚点引用！
  */
 
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { DocumentAdd } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { createNoteApi, updateNoteApi, getDocumentAnnotationsApi, AnnotationItem } from '../api/note';
+import { createNoteApi, updateNoteApi, getNotesApi, getDocumentAnnotationsApi, AnnotationItem } from '../api/note';
 
 const props = defineProps<{
   docId?: string;
@@ -66,21 +66,32 @@ const props = defineProps<{
 
 const title = ref<string>(props.initialTitle || '新建研读笔记');
 const content = ref<string>(props.initialContent || '');
+const persistedNoteId = ref<string>(props.noteId || '');
 const saving = ref<boolean>(false);
 const annotations = ref<AnnotationItem[]>([]);
+let saveAgain = false;
 
 let timer: any = null;
 
-onMounted(() => {
+onMounted(async () => {
   if (props.docId) {
+    await loadExistingNote();
     loadAnnotations();
   }
 });
 
 watch(() => props.docId, () => {
+  persistedNoteId.value = props.noteId || '';
+  title.value = props.initialTitle || '新建研读笔记';
+  content.value = props.initialContent || '';
   if (props.docId) {
+    void loadExistingNote();
     loadAnnotations();
   }
+});
+
+watch(() => props.noteId, (id) => {
+  persistedNoteId.value = id || '';
 });
 
 async function loadAnnotations() {
@@ -101,15 +112,41 @@ function onContentInput() {
 
 async function autoSave() {
   if (!title.value.trim()) return;
+  if (saving.value) {
+    saveAgain = true;
+    return;
+  }
+
   saving.value = true;
   try {
-    if (props.noteId) {
-      await updateNoteApi(props.noteId, { title: title.value, content: content.value });
+    if (persistedNoteId.value) {
+      await updateNoteApi(persistedNoteId.value, { title: title.value, content: content.value });
     } else {
-      await createNoteApi({ title: title.value, content: content.value, docId: props.docId });
+      const savedNote = await createNoteApi({ title: title.value, content: content.value, docId: props.docId });
+      // 后续自动保存必须更新同一条笔记，避免每次输入都创建新记录。
+      persistedNoteId.value = savedNote.id;
     }
   } finally {
     saving.value = false;
+    if (saveAgain) {
+      saveAgain = false;
+      void autoSave();
+    }
+  }
+}
+
+async function loadExistingNote() {
+  if (!props.docId || persistedNoteId.value) return;
+  try {
+    const existingNotes = await getNotesApi(props.docId);
+    const existingNote = existingNotes[0];
+    if (existingNote) {
+      persistedNoteId.value = existingNote.id;
+      title.value = existingNote.title;
+      content.value = existingNote.content;
+    }
+  } catch (error) {
+    console.error(error);
   }
 }
 
@@ -127,6 +164,10 @@ function insertAnnotationToNote(anno: AnnotationItem) {
 
 defineExpose({
   loadAnnotations,
+});
+
+onBeforeUnmount(() => {
+  clearTimeout(timer);
 });
 </script>
 

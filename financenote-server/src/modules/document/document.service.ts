@@ -54,7 +54,7 @@ export class DocumentService implements OnModuleInit {
   }
 
   /**
-   * 查询共享文档列表。文档按类型和关键词筛选，不按上传用户隔离。
+   * 查询共享文档列表。文档按类型和关键词筛选，登录用户均可阅读。
    */
   async findDocuments(
     docType?: DocType,
@@ -87,7 +87,7 @@ export class DocumentService implements OnModuleInit {
       throw new NotFoundException(`ID 为 ${id} 的文档不存在`);
     }
 
-    // 共享阅读不需要所有权校验；删除等归属操作可传入 userId 做额外校验。
+    // 阅读和 AI 检索是共享能力；删除等写入操作仍通过 userId 做归属校验。
     if (userId !== undefined && doc.userId !== userId) {
       throw new ForbiddenException('您无权修改该文档');
     }

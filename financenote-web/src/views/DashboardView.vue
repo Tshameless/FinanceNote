@@ -335,14 +335,18 @@ function handleAiJumpToPage(pageNum: number) {
 }
 
 // 当在 PDF 中选中文字点击“高亮锚点”时
-async function handleAddAnnotation(data: { pageNum: number; text: string }) {
+async function handleAddAnnotation(data: {
+  pageNum: number;
+  text: string;
+  rectCoords: { x: number; y: number; width: number; height: number };
+}) {
   if (!docStore.activeDocument) return;
   try {
     await createAnnotationApi({
       docId: docStore.activeDocument.id,
       pageNum: data.pageNum,
       selectedText: data.text,
-      rectCoords: { x: 0.1, y: 0.2, width: 0.8, height: 0.05 },
+      rectCoords: data.rectCoords,
     });
     if (noteEditorRef.value) {
       noteEditorRef.value.loadAnnotations();
