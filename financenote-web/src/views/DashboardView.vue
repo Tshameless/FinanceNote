@@ -25,6 +25,12 @@
         >
           <el-icon><Notebook /></el-icon> 深度书籍中心
         </div>
+        <div
+          :class="['menu-item', activeTab === 'ECONOMICS' ? 'active' : '']"
+          @click="changeTab('ECONOMICS')"
+        >
+          <el-icon><Reading /></el-icon> 经济学智库
+        </div>
       </nav>
 
       <div class="user-panel">
@@ -65,8 +71,14 @@
 
       <!-- 双栏核心研读界面 -->
       <div class="content-body">
+        <!-- 经济学智库全景视图 -->
+        <EconomicsKnowledge
+          v-if="!docStore.activeDocument && activeTab === 'ECONOMICS'"
+          @ask-ai-prompt="handleAskEconomicsAi"
+        />
+
         <!-- 未选中文档时显示文档列表 -->
-        <div v-if="!docStore.activeDocument" class="document-grid-container">
+        <div v-else-if="!docStore.activeDocument" class="document-grid-container">
           <h3 class="section-title">我的研读资料库</h3>
           <div v-if="docStore.loading" class="loading-box">
             <el-icon class="is-loading"><Loading /></el-icon> 正在加载资源...
@@ -201,7 +213,7 @@
 
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Collection, TrendCharts, Notebook, SwitchButton, Search, Upload, Loading, Back } from '@element-plus/icons-vue';
+import { Collection, TrendCharts, Notebook, Reading, SwitchButton, Search, Upload, Loading, Back } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useAuthStore } from '../stores/authStore';
 import { useDocumentStore } from '../stores/documentStore';
@@ -210,6 +222,7 @@ import { createAnnotationApi } from '../api/note';
 import PdfViewer from '../components/PdfViewer.vue';
 import AiDrawer from '../components/AiDrawer.vue';
 import NoteEditor from '../components/NoteEditor.vue';
+import EconomicsKnowledge from '../components/EconomicsKnowledge.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -241,7 +254,22 @@ onMounted(() => {
 
 function changeTab(tab: string) {
   activeTab.value = tab;
-  docStore.fetchDocuments(tab === 'all' ? undefined : tab, searchKeyword.value);
+  if (tab !== 'ECONOMICS') {
+    docStore.fetchDocuments(tab === 'all' ? undefined : tab, searchKeyword.value);
+  }
+}
+
+function handleAskEconomicsAi(promptText: string) {
+  if (docStore.documents && docStore.documents.length > 0) {
+    // 自动打开第一份文档并开启 AI 面板
+    if (!docStore.activeDocument) {
+      docStore.setActiveDocument(docStore.documents[0]);
+    }
+    rightPanel.value = 'ai';
+    ElMessage.success('已为您打开 AI Copilot 助手，您可以直接向 AI 发送该理论在当前文档中的分析提问！');
+  } else {
+    ElMessage.info('提示：您可以先上传或选择一份财报/书籍，AI 助手将结合文档原文出处为您深度解答该理论的应用！');
+  }
 }
 
 function handleSearch() {

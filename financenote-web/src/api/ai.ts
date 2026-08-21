@@ -8,7 +8,7 @@ export interface SourceInfo {
 }
 
 export function streamAiAnswerFetch(
-  docId: string,
+  docId: string | undefined,
   query: string,
   currentPage: number | undefined,
   onSources: (sources: SourceInfo[]) => void,
@@ -24,7 +24,7 @@ export function streamAiAnswerFetch(
       'Content-Type': 'application/json',
       Authorization: token ? `Bearer ${token}` : '',
     },
-    body: JSON.stringify({ docId, query, currentPage, topK: 5 }),
+    body: JSON.stringify({ docId: docId || undefined, query, currentPage, topK: 5 }),
   })
     .then((response) => {
       if (!response.ok) {
