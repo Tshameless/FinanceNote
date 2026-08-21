@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
+import { fileURLToPath, URL } from 'url';
 import Components from 'unplugin-vue-components/vite';
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 
@@ -15,16 +16,17 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          element: ['element-plus', '@element-plus/icons-vue'],
-          pdf: ['pdfjs-dist'],
+        manualChunks(id) {
+      if (id.includes('node_modules/element-plus') || id.includes('node_modules/@element-plus/icons-vue')) return 'element';
+          if (id.includes('node_modules/pdfjs-dist')) return 'pdf';
+          return undefined;
         },
       },
     },
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {

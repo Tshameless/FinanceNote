@@ -123,13 +123,11 @@ import { ref, onMounted, watch, computed, nextTick } from 'vue';
 import { ArrowLeft, ArrowRight, ZoomIn, ZoomOut, EditPen, Menu } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import * as pdfjsLib from 'pdfjs-dist';
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useAuthStore } from '../stores/authStore';
 
 // Worker 与主包使用同一版本并随 Vite 构建发布，避免依赖外部 CDN。
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.js',
-  import.meta.url,
-).toString();
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 const props = defineProps<{
   docId: string;
@@ -255,7 +253,7 @@ async function renderPageCanvas(pageNum: number) {
   canvas.width = viewport.width;
 
   if (context) {
-    await page.render({ canvasContext: context, viewport }).promise;
+    await page.render({ canvas, canvasContext: context, viewport }).promise;
   }
 }
 
@@ -298,7 +296,7 @@ async function renderSinglePage(pageNum: number) {
   canvas.width = viewport.width;
 
   if (context) {
-    await page.render({ canvasContext: context, viewport }).promise;
+    await page.render({ canvas, canvasContext: context, viewport }).promise;
   }
 }
 

@@ -62,7 +62,7 @@ export class NoteService {
   async getNoteDetail(id: string, userId: number): Promise<NoteEntity> {
     const note = await this.noteRepository.findOne({
       where: { id },
-      relations: ['annotations'],
+      relations: { annotations: true },
     });
 
     if (!note) {

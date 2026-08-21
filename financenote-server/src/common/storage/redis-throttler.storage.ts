@@ -1,10 +1,7 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ThrottlerStorage } from '@nestjs/throttler';
+import { ThrottlerStorageRecord } from '@nestjs/throttler/dist/throttler-storage-record.interface';
 
-interface ThrottlerStorageRecord {
-  totalHits: number;
-  timeToExpire: number;
-}
 import IORedis from 'ioredis';
 
 /** Redis-backed counter shared by all API instances. */
@@ -16,7 +13,7 @@ export class RedisThrottlerStorage implements ThrottlerStorage, OnApplicationShu
     this.client = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
   }
 
-  async increment(key: string, ttl: number): Promise<ThrottlerStorageRecord> {
+  async increment(key: string, ttl: number, limit: number, _blockDuration: number, _throttlerName: string): Promise<ThrottlerStorageRecord> {
     const redisKey = `financenote:throttle:${key}`;
     const count = await this.client.incr(redisKey);
     if (count === 1) await this.client.pexpire(redisKey, ttl);
@@ -24,6 +21,8 @@ export class RedisThrottlerStorage implements ThrottlerStorage, OnApplicationShu
     return {
       totalHits: count,
       timeToExpire: Math.max(1, Math.ceil(Math.max(remaining, 0) / 1000)),
+      isBlocked: count > limit,
+      timeToBlockExpire: count > limit ? Math.max(1, Math.ceil(Math.max(remaining, 0) / 1000)) : 0,
     };
   }
 

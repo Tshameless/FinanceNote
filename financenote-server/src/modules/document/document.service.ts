@@ -17,7 +17,6 @@ import { UploadDocumentDto } from './dto/upload-document.dto';
 import { ConfigService } from '@nestjs/config';
 import { OpenAI } from 'openai';
 import * as fs from 'fs';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
@@ -218,6 +217,7 @@ export class DocumentService implements OnModuleInit {
 
       // 解析任务在后台执行，使用异步读取避免阻塞 API 事件循环。
       const dataBuffer = new Uint8Array(await fs.promises.readFile(filePath));
+      const pdfjsLib = await this.loadPdfJs();
       loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
       pdfDoc = await loadingTask.promise;
 
@@ -350,6 +350,12 @@ export class DocumentService implements OnModuleInit {
     if (document.status !== DocumentStatus.PROCESSING) {
       throw new Error(`文档当前状态为 ${document.status}，停止处理任务`);
     }
+  }
+
+  private async loadPdfJs(): Promise<any> {
+    // pdfjs-dist 4+ is ESM-only; keep the Nest CommonJS build compatible.
+    const dynamicImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<any>;
+    return dynamicImport('pdfjs-dist/legacy/build/pdf.mjs');
   }
 
   /**
