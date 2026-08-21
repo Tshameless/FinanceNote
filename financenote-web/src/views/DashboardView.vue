@@ -84,7 +84,38 @@
 
         <!-- 未选中文档时显示文档列表 -->
         <div v-else-if="!docStore.activeDocument" class="document-grid-container">
-          <h3 class="section-title">我的研读资料库</h3>
+            <div class="library-heading">
+              <div>
+                <div class="eyebrow">WORKSPACE OVERVIEW</div>
+                <h3 class="section-title">我的研读资料库</h3>
+                <p class="section-caption">集中管理财报、书籍与正在处理的解析任务</p>
+              </div>
+              <el-button size="small" plain :loading="docStore.loading" @click="refreshDocuments">
+                <el-icon><Refresh /></el-icon> 刷新资料
+              </el-button>
+            </div>
+            <div class="overview-grid">
+              <div class="overview-stat fn-glass-card">
+                <span class="stat-label">资料总数</span>
+                <strong>{{ docStore.documents.length }}</strong>
+                <span class="stat-note">当前筛选结果</span>
+              </div>
+              <div class="overview-stat fn-glass-card">
+                <span class="stat-label">已完成解析</span>
+                <strong class="success-number">{{ processedCount }}</strong>
+                <span class="stat-note">可进行 AI 研读</span>
+              </div>
+              <div class="overview-stat fn-glass-card">
+                <span class="stat-label">处理中</span>
+                <strong class="warning-number">{{ processingCount }}</strong>
+                <span class="stat-note">后台任务状态</span>
+              </div>
+              <div class="overview-stat fn-glass-card">
+                <span class="stat-label">资料容量</span>
+                <strong>{{ formatBytes(totalFileSize) }}</strong>
+                <span class="stat-note">已上传文件</span>
+              </div>
+            </div>
           <div v-if="docStore.loading" class="loading-box">
             <el-icon class="is-loading"><Loading /></el-icon> 正在加载资源...
           </div>
@@ -244,9 +275,9 @@
  * 3. 嵌入式的“受保护 PDF 阅读器 + AI Copilot (RAG) + 划线笔记双栏编辑器”
  */
 
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { Collection, TrendCharts, Notebook, Reading, SwitchButton, Search, Upload, Loading, Back, Lock, Share } from '@element-plus/icons-vue';
+import { Collection, TrendCharts, Notebook, Reading, SwitchButton, Search, Upload, Loading, Back, Lock, Share, Refresh } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useAuthStore } from '../stores/authStore';
 import { useDocumentStore } from '../stores/documentStore';
@@ -262,7 +293,9 @@ const router = useRouter();
 const authStore = useAuthStore();
 const docStore = useDocumentStore();
 
-const activeTab = ref<string>('all');
+const validTabs = new Set(['all', 'FINANCIAL_REPORT', 'BOOK', 'ECONOMICS']);
+const savedTab = sessionStorage.getItem('fn_active_tab');
+const activeTab = ref<string>(savedTab && validTabs.has(savedTab) ? savedTab : 'all');
 const searchKeyword = ref<string>('');
 const rightPanel = ref<'ai' | 'note'>('ai');
 
@@ -286,11 +319,19 @@ const uploadForm = ref({
 
 onMounted(() => {
   authStore.fetchProfile();
-  docStore.fetchDocuments();
+  if (activeTab.value !== 'ECONOMICS') {
+    docStore.fetchDocuments(activeTab.value === 'all' ? undefined : activeTab.value, searchKeyword.value);
+  }
 });
 
+const processedCount = computed(() => docStore.documents.filter((doc) => doc.status === 'PROCESSED').length);
+const processingCount = computed(() => docStore.documents.filter((doc) => doc.status === 'PROCESSING').length);
+const totalFileSize = computed(() => docStore.documents.reduce((total, doc) => total + (Number(doc.fileSize) || 0), 0));
+
 function changeTab(tab: string) {
+  if (!validTabs.has(tab)) return;
   activeTab.value = tab;
+  sessionStorage.setItem('fn_active_tab', tab);
   if (tab !== 'ECONOMICS') {
     docStore.fetchDocuments(tab === 'all' ? undefined : tab, searchKeyword.value);
   }
@@ -329,6 +370,17 @@ async function handleDeleteDoc(id: string) {
   } catch {
     ElMessage.error('文档删除失败，请稍后重试');
   }
+}
+
+function refreshDocuments() {
+  docStore.fetchDocuments(activeTab.value === 'all' ? undefined : activeTab.value, searchKeyword.value);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 async function handleToggleVisibility(doc: DocumentItem) {
@@ -537,13 +589,34 @@ async function submitPasswordChange() {
 .section-title {
   font-size: 18px;
   color: #f8fafc;
-  margin-bottom: 16px;
+  margin-top: 4px;
 }
+
+.library-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 18px; }
+.eyebrow { color: #22d3ee; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; }
+.section-caption { color: #64748b; font-size: 12px; margin-top: 4px; }
+.overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
+.overview-stat { min-height: 112px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; }
+.stat-label { color: #94a3b8; font-size: 12px; }
+.overview-stat strong { color: #f8fafc; font-size: 26px; font-weight: 700; line-height: 1; }
+.overview-stat strong.success-number { color: #34d399; }
+.overview-stat strong.warning-number { color: #fbbf24; }
+.stat-note { color: #64748b; font-size: 11px; }
 
 .doc-cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .library-heading { align-items: flex-start; flex-direction: column; }
+  .overview-grid { grid-template-columns: 1fr 1fr; }
+  .document-grid-container { padding: 16px; }
 }
 
 .doc-card {
