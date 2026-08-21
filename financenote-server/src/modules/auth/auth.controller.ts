@@ -7,7 +7,7 @@
  * - GET  /api/auth/me       : 获取当前登录用户信息 (需 JWT 凭证)
  */
 
-import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
@@ -16,6 +16,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UserEntity } from '../user/user.entity';
 import { Throttle } from '@nestjs/throttler';
+import { Response } from 'express';
 
 @ApiTags('认证与账户模块 Auth')
 @Controller('auth')
@@ -26,16 +27,27 @@ export class AuthController {
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 3600000 } })
   @ApiOperation({ summary: '新用户账号注册' })
-  async register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+  async register(@Body() registerDto: RegisterDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.register(registerDto);
+    this.setAuthCookie(res, result.accessToken);
+    return { user: result.user };
   }
 
   @Public() // 免去 JWT 校验
   @Post('login')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: '用户账号登录' })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.login(loginDto);
+    this.setAuthCookie(res, result.accessToken);
+    return { user: result.user };
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  async logout(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie('fn_access_token', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+    return { message: '已退出登录' };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -50,5 +62,15 @@ export class AuthController {
       avatar: user.avatar,
       createdAt: user.createdAt,
     };
+  }
+
+  private setAuthCookie(res: Response, token: string): void {
+    res.cookie('fn_access_token', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
   }
 }

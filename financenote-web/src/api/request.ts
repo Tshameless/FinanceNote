@@ -2,7 +2,7 @@
  * 前端 Axios HTTP 网络请求封装 (request.ts)
  * 
  * 核心功能：
- * 1. 自动注入 localStorage 中的 JWT AccessToken 到 Authorization: Bearer <Token>
+ * 1. 通过 HttpOnly Cookie 携带 JWT，前端不接触 Token 内容
  * 2. 统一拦截 401 Unauthorized 异常并跳转至登录页
  * 3. 统一提取 backend 标准 JSON `{ code, message, data }` 结构
  */
@@ -13,15 +13,12 @@ import { ElMessage } from 'element-plus';
 const request = axios.create({
   baseURL: '/api',
   timeout: 60000, // 默认 60s
+  withCredentials: true,
 });
 
 // 请求拦截器：自动注入 JWT Token
 request.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('fn_access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
     return config;
   },
   (error) => {
@@ -46,7 +43,7 @@ request.interceptors.response.use(
 
     if (status === 401) {
       ElMessage.warning('身份凭证失效或未登录，请重新登录！');
-      localStorage.removeItem('fn_access_token');
+      sessionStorage.removeItem('fn_authenticated');
       window.location.href = '/login';
     } else if (status === 403) {
       ElMessage.error('抱歉：您无权访问该受保护的书籍/财报资源！');

@@ -52,8 +52,7 @@
 /**
  * 登录与注册视图 (LoginView.vue)
  * 
- * 核心安全点：登录成功后存入 JWT AccessToken 到 Pinia 与 LocalStorage，
- * 之后的全部 PDF/EPUB 文件读取与 API 交互均带着 JWT header 才能通过 NestJS 鉴权！
+ * 核心安全点：登录成功后由后端写入 HttpOnly Cookie，前端不接触 JWT 内容。
  */
 
 import { ref } from 'vue';

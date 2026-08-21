@@ -13,6 +13,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { RedisThrottlerStorage } from './common/storage/redis-throttler.storage';
 
 // 导入业务核心模块
 import { AuthModule } from './modules/auth/auth.module';
@@ -65,10 +66,16 @@ import { AnnotationEntity } from './modules/note/entities/annotation.entity';
     }),
 
     // 3. 全局 API 速率限制 (Throttler)
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [{ ttl: 60000, limit: 100 }],
+        storage: configService.get<string>('REDIS_URL')
+          ? new RedisThrottlerStorage(configService.getOrThrow<string>('REDIS_URL'))
+          : undefined,
+      }),
+    }),
 
     // 4. 业务子模块划分
     AuthModule,

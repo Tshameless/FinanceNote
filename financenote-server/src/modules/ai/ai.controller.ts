@@ -36,10 +36,10 @@ export class AiController {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
 
     let closed = false;
     const abortController = new AbortController();
+    const requestTimeout = setTimeout(() => abortController.abort(), 120000);
     req.on('close', () => {
       closed = true;
       abortController.abort();
@@ -50,6 +50,7 @@ export class AiController {
       .filter((message) => message.role === MessageRole.USER || message.role === MessageRole.ASSISTANT)
       .map((message) => ({ role: message.role, content: message.content }));
     await this.conversationService.addMessage(user.id, conversation.id, MessageRole.USER, dto.query);
+    res.flushHeaders();
     let assistantText = '';
     let assistantSources: Array<{ id?: string; pageNumber: number; snippet?: string }> = [];
     const subject = new Subject<any>();
@@ -64,8 +65,10 @@ export class AiController {
         res.end();
       },
       error: (err) => {
-        res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
-        res.end();
+        if (!closed && !res.writableEnded && !res.destroyed) {
+          res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+          res.end();
+        }
       },
     });
 
@@ -83,6 +86,7 @@ export class AiController {
     if (assistantText && !closed) {
       await this.conversationService.addMessage(user.id, conversation.id, MessageRole.ASSISTANT, assistantText, assistantSources);
     }
+    clearTimeout(requestTimeout);
   }
 
   @Post('ask')

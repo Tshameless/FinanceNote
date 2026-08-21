@@ -1,22 +1,23 @@
 const { Client } = require('pg');
 
-const passwords = ['', 'postgres', '123456', 'root', 'admin', 'password', '12345678', 'Laplace'];
+const password = process.env.DB_PASSWORD;
+if (!password) throw new Error('请通过 DB_PASSWORD 提供测试数据库密码');
 
 async function testPasswords() {
-  for (const pwd of passwords) {
+  {
     const client = new Client({
       host: 'localhost',
       port: 5432,
       user: 'postgres',
-      password: pwd,
+      password,
     });
     try {
       await client.connect();
-      console.log(`✅ SUCCESS_PASSWORD: "${pwd}"`);
+      console.log('✅ 数据库连接测试成功');
       await client.end();
-      return pwd;
+      return true;
     } catch (err) {
-      console.log(`❌ Password "${pwd}" failed: ${err.message}`);
+      console.error(`❌ 数据库连接失败: ${err.message}`);
     }
   }
 }

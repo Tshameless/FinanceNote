@@ -204,9 +204,7 @@ async function loadPdfStream() {
   try {
     const loadingTask = pdfjsLib.getDocument({
       url: `/api/documents/${props.docId}/stream`,
-      httpHeaders: {
-        Authorization: `Bearer ${authStore.token}`,
-      },
+      withCredentials: true,
     });
 
     pdfDoc = await loadingTask.promise;

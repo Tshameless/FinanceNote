@@ -61,9 +61,8 @@ npm install
 # 配置 .env 中的 PostgreSQL 连接、DEEPSEEK_API_KEY、AI_MODEL_NAME 和 EMBEDDING_API_KEY
 # 本地首次初始化表结构（需要数据库已创建且 pgvector 可用）
 npm run db:init
-# 已有环境升级时执行 pgvector 与文档处理状态迁移（需要 psql 已连接到 DB_DATABASE）
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" -f migrations/001-enable-pgvector.sql
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" -f migrations/002-document-processing-state.sql
+# 初始化或升级数据库结构（迁移按文件名顺序执行且可重复运行）
+npm run db:migrate
 npm run start:dev
 ```
 后端服务默认运行在 `http://localhost:3000`。
@@ -73,8 +72,9 @@ Embedding 未配置时系统仍可启动，但 AI 检索会自动回退到按页
 配置 `REDIS_URL` 后，文档解析会使用 BullMQ 持久化队列并支持重试；未配置时保留单进程开发环境回退队列。
 
 文档解析默认限制为 2000 页（可通过 `MAX_DOCUMENT_PAGES` 调整），文本切块会分批写入数据库，避免长文档把全部 chunk 长时间保留在内存中。
+单文档解析默认最长运行 15 分钟、单页最多处理 250000 个字符，可通过 `DOCUMENT_PROCESSING_TIMEOUT_MS` 和 `MAX_PAGE_TEXT_CHARS` 调整。
 
-登录、注册、文档上传和 AI 接口均有独立限流。当前限流状态默认保存在应用进程内存中；多实例部署时应将限流存储切换为 Redis，避免每个实例分别计数。
+登录、注册、文档上传和 AI 接口均有独立限流。配置 `REDIS_URL` 后限流计数在多实例间共享；未配置时仅适用于单进程开发环境。
 
 ### 3. 前端启动 (financenote-web)
 ```bash

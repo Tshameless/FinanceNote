@@ -141,6 +141,12 @@ export class NoteService {
     });
   }
 
+  async deleteAnnotation(id: string, userId: number): Promise<void> {
+    const annotation = await this.annotationRepository.findOne({ where: { id, userId } });
+    if (!annotation) throw new NotFoundException('批注不存在或不属于当前用户');
+    await this.annotationRepository.remove(annotation);
+  }
+
   private async assertDocumentExists(docId: string, userId: number): Promise<void> {
     const document = await this.documentRepository.findOne({ where: { id: docId } });
     if (!document) {

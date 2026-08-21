@@ -127,6 +127,7 @@ export class DocumentService implements OnModuleInit {
     file: Express.Multer.File,
     dto: UploadDocumentDto,
   ): Promise<DocumentEntity> {
+    await this.assertStorageQuota(userId, file.size);
     const doc = this.docRepository.create({
       userId,
       title: dto.title || file.originalname,
@@ -170,6 +171,19 @@ export class DocumentService implements OnModuleInit {
     this.drainProcessingQueue();
   }
 
+  private async assertStorageQuota(userId: number, incomingBytes: number): Promise<void> {
+    const configuredLimit = this.configService.get<number>('MAX_USER_STORAGE_BYTES', 1024 * 1024 * 1024);
+    const result = await this.docRepository
+      .createQueryBuilder('doc')
+      .select('COALESCE(SUM(doc.fileSize), 0)', 'total')
+      .where('doc.userId = :userId', { userId })
+      .getRawOne<{ total: string }>();
+    const currentBytes = Number(result?.total || 0);
+    if (!Number.isFinite(currentBytes) || currentBytes + incomingBytes > configuredLimit) {
+      throw new ForbiddenException('已超过个人文档存储配额');
+    }
+  }
+
   private drainProcessingQueue() {
     while (this.activeJobs < this.maxConcurrentJobs && this.pendingJobs.length > 0) {
       const job = this.pendingJobs.shift();
@@ -188,8 +202,11 @@ export class DocumentService implements OnModuleInit {
     this.logger.log(`[后台任务] 开始精确顺序解析 PDF 内容: ${docId}`);
     let loadingTask: any;
     let pdfDoc: any;
+    const processingTimeoutMs = Number(this.configService.get<string>('DOCUMENT_PROCESSING_TIMEOUT_MS', String(15 * 60 * 1000)));
+    const processingDeadline = Date.now() + (Number.isFinite(processingTimeoutMs) ? processingTimeoutMs : 15 * 60 * 1000);
 
     try {
+      await this.assertDocumentProcessing(docId);
       await this.docRepository.update(docId, {
         processingAttempts: attempt + 1,
         processingProgress: 0,
@@ -237,12 +254,16 @@ export class DocumentService implements OnModuleInit {
 
       // 1..N 顺序严格遍历物理页码
       for (let p = 1; p <= pdfDoc.numPages; p++) {
+        if (Date.now() > processingDeadline) throw new Error('文档解析超过最大处理时间');
         if (this.cancelledJobs.has(docId)) throw new Error('文档处理已取消');
+        if (p === 1 || p % 5 === 0) await this.assertDocumentProcessing(docId);
         let shouldFlush = false;
         try {
           const page = await pdfDoc.getPage(p);
           const textContent = await page.getTextContent();
-          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          const maxPageTextCharsValue = Number(this.configService.get<string>('MAX_PAGE_TEXT_CHARS', '250000'));
+          const maxPageTextChars = Number.isFinite(maxPageTextCharsValue) ? maxPageTextCharsValue : 250000;
+          const pageText = textContent.items.map((item: any) => item.str).join(' ').slice(0, maxPageTextChars);
 
           if (pageText.trim()) {
             const subChunks = this.splitTextIntoChunks(pageText, 600);
@@ -320,6 +341,14 @@ export class DocumentService implements OnModuleInit {
       } catch (cleanupError) {
         this.logger.warn(`释放 PDF 解析资源失败 ${docId}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
       }
+    }
+  }
+
+  private async assertDocumentProcessing(docId: string): Promise<void> {
+    const document = await this.docRepository.findOne({ where: { id: docId } });
+    if (!document) throw new Error('文档已删除，停止处理任务');
+    if (document.status !== DocumentStatus.PROCESSING) {
+      throw new Error(`文档当前状态为 ${document.status}，停止处理任务`);
     }
   }
 

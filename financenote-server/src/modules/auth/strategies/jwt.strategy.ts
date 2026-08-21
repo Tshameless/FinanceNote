@@ -12,6 +12,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UserService } from '../../user/user.service';
+import { Request } from 'express';
 
 export interface JwtPayload {
   sub: number;       // 用户唯一 ID
@@ -25,7 +26,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private userService: UserService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (request: Request) => request?.cookies?.fn_access_token,
+      ]),
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>('JWT_SECRET'),
     });

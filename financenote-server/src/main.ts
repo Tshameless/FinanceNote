@@ -16,6 +16,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -23,12 +24,17 @@ async function bootstrap() {
   // 创建 NestJS 应用程序实例
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+  app.use(cookieParser());
+  if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'replace-with-a-long-random-secret')) {
+    throw new Error('生产环境必须配置独立的 JWT_SECRET');
+  }
 
   // 基础响应安全头；文件流仍由受保护控制器输出，不暴露上传目录。
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https:; frame-ancestors 'self'");
     next();
   });
 

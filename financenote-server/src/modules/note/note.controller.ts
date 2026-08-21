@@ -83,4 +83,14 @@ export class NoteController {
   ) {
     return this.noteService.getDocumentAnnotations(docId, user.id);
   }
+
+  @Delete('annotations/:id')
+  @ApiOperation({ summary: '删除当前用户的高亮划线标注' })
+  async deleteAnnotation(
+    @Param('id') id: string,
+    @CurrentUser() user: UserEntity,
+  ) {
+    await this.noteService.deleteAnnotation(id, user.id);
+    return { message: '批注已成功删除' };
+  }
 }

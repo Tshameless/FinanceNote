@@ -12,7 +12,8 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "db:init": "node create-tables-postgres.js"
+    "db:init": "node create-tables-postgres.js",
+    "db:migrate": "node migrate-postgres.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
@@ -24,12 +25,14 @@
     "@nestjs/swagger": "^7.2.0",
     "@nestjs/throttler": "^5.1.1",
     "@nestjs/typeorm": "^10.0.1",
+    "@types/cookie-parser": "^1.4.10",
     "bcrypt": "^5.1.1",
     "bullmq": "^6.1.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "cookie-parser": "^1.4.7",
     "ioredis": "^5.11.1",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.2.0",
     "openai": "^4.26.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

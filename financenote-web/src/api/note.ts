@@ -44,3 +44,7 @@ export function createAnnotationApi(data: Partial<AnnotationItem>) {
 export function getDocumentAnnotationsApi(docId: string) {
   return request.get<AnnotationItem[]>(`/notes/annotations/document/${docId}`) as unknown as Promise<AnnotationItem[]>;
 }
+
+export function deleteAnnotationApi(id: string) {
+  return request.delete(`/notes/annotations/${id}`);
+}

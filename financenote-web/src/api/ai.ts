@@ -19,14 +19,12 @@ export function streamAiAnswerFetch(
   onDone: () => void,
   onError: (err: any) => void
 ) {
-  const token = localStorage.getItem('fn_access_token');
-
   fetch('/api/ai/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: token ? `Bearer ${token}` : '',
     },
+    credentials: 'include',
     body: JSON.stringify({ docId: docId || undefined, query, currentPage, conversationId, topK: 5 }),
   })
     .then((response) => {

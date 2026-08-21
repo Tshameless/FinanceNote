@@ -27,7 +27,7 @@ const router = createRouter({
 
 // 路由守卫：校验是否已登录
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('fn_access_token');
+  const token = sessionStorage.getItem('fn_authenticated');
   if (to.meta.requiresAuth && !token) {
     next('/login');
   } else {
