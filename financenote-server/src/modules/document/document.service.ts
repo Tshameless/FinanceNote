@@ -8,7 +8,7 @@
  * 4. 存入 chunks 数据库供 AI 研读精确定位
  */
 
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DocumentEntity, DocumentStatus, DocType } from './entities/document.entity';
@@ -20,8 +20,13 @@ import * as fs from 'fs';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
 
 @Injectable()
-export class DocumentService {
+export class DocumentService implements OnModuleInit {
   private readonly logger = new Logger(DocumentService.name);
+  private readonly maxConcurrentJobs = 2;
+  private readonly maxAttempts = 3;
+  private activeJobs = 0;
+  private readonly pendingJobs: Array<{ docId: string; filePath: string; attempt: number }> = [];
+  private readonly queuedJobIds = new Set<string>();
 
   constructor(
     @InjectRepository(DocumentEntity)
@@ -30,6 +35,14 @@ export class DocumentService {
     private chunkRepository: Repository<DocumentChunkEntity>,
     private configService: ConfigService,
   ) {}
+
+  async onModuleInit() {
+    // 服务重启后恢复之前未完成的任务，避免上传记录永久停留在 PROCESSING。
+    const processingDocs = await this.docRepository.find({ where: { status: DocumentStatus.PROCESSING } });
+    for (const doc of processingDocs) {
+      this.enqueueProcessing(doc.id, doc.filePath, doc.processingAttempts || 0);
+    }
+  }
 
   private getEmbeddingClient(): OpenAI | null {
     const apiKey = this.configService.get<string>('EMBEDDING_API_KEY');
@@ -108,9 +121,7 @@ export class DocumentService {
     const savedDoc = await this.docRepository.save(doc);
 
     // 触发后台异步解析，不阻塞当前 HTTP 请求响应
-    this.processDocumentBackground(savedDoc.id, file.path).catch((err) => {
-      this.logger.error(`后台解析文档 ${savedDoc.id} 出错: ${err.message}`, err.stack);
-    });
+    this.enqueueProcessing(savedDoc.id, file.path, 0);
 
     return savedDoc;
   }
@@ -118,10 +129,36 @@ export class DocumentService {
   /**
    * 后台异步任务：按顺序 1..N 精确解析 PDF -> 提取文字 -> 滑动切块 -> 存入 chunk 表
    */
-  async processDocumentBackground(docId: string, filePath: string) {
+  private enqueueProcessing(docId: string, filePath: string, attempt: number) {
+    if (this.queuedJobIds.has(docId)) return;
+    this.queuedJobIds.add(docId);
+    this.pendingJobs.push({ docId, filePath, attempt });
+    this.drainProcessingQueue();
+  }
+
+  private drainProcessingQueue() {
+    while (this.activeJobs < this.maxConcurrentJobs && this.pendingJobs.length > 0) {
+      const job = this.pendingJobs.shift();
+      if (!job) return;
+      this.activeJobs += 1;
+      this.processDocumentBackground(job.docId, job.filePath, job.attempt)
+        .finally(() => {
+          this.activeJobs -= 1;
+          this.queuedJobIds.delete(job.docId);
+          this.drainProcessingQueue();
+        });
+    }
+  }
+
+  private async processDocumentBackground(docId: string, filePath: string, attempt: number) {
     this.logger.log(`[后台任务] 开始精确顺序解析 PDF 内容: ${docId}`);
 
     try {
+      await this.docRepository.update(docId, {
+        processingAttempts: attempt + 1,
+        processingProgress: 0,
+        processingError: null,
+      });
       if (!fs.existsSync(filePath)) {
         throw new Error(`物理文件不存在: ${filePath}`);
       }
@@ -155,6 +192,11 @@ export class DocumentService {
           failedPages += 1;
           this.logger.warn(`[后台任务] 文档 ${docId} 第 ${p} 页解析失败`);
         }
+        if (p === pdfDoc.numPages || p % 5 === 0) {
+          await this.docRepository.update(docId, {
+            processingProgress: Math.floor((p / pdfDoc.numPages) * 100),
+          });
+        }
       }
 
       if (chunksToInsert.length === 0) {
@@ -184,11 +226,26 @@ export class DocumentService {
       await this.chunkRepository.save(chunksToInsert);
 
       // 更新文档解析状态为完成 PROCESSED
-      await this.docRepository.update(docId, { status: DocumentStatus.PROCESSED });
+      await this.docRepository.update(docId, {
+        status: DocumentStatus.PROCESSED,
+        processingProgress: 100,
+        processingError: null,
+      });
       this.logger.log(`[后台任务] 文档 ${docId} 解析完成，共切出 ${chunksToInsert.length} 个片段，失败页数 ${failedPages}`);
     } catch (error) {
       this.logger.error(`[后台任务] 文档 ${docId} 解析失败: ${error.message}`);
-      await this.docRepository.update(docId, { status: DocumentStatus.FAILED });
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt + 1 < this.maxAttempts) {
+        const nextAttempt = attempt + 1;
+        this.logger.warn(`[后台任务] 文档 ${docId} 将在重试后继续 (${nextAttempt + 1}/${this.maxAttempts})`);
+        await this.docRepository.update(docId, { processingError: message });
+        setTimeout(() => this.enqueueProcessing(docId, filePath, nextAttempt), 1000 * nextAttempt);
+      } else {
+        await this.docRepository.update(docId, {
+          status: DocumentStatus.FAILED,
+          processingError: message,
+        });
+      }
     }
   }
 

@@ -61,6 +61,7 @@ npm install
 # 配置 .env 中的 PostgreSQL 连接、DEEPSEEK_API_KEY 和 EMBEDDING_API_KEY
 # 首次部署执行 pgvector 迁移（需要 psql 已连接到 DB_DATABASE）
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" -f migrations/001-enable-pgvector.sql
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" -f migrations/002-document-processing-state.sql
 npm run start:dev
 ```
 后端服务默认运行在 `http://localhost:3000`。

@@ -72,6 +72,15 @@ export class DocumentEntity {
   @Column({ type: 'enum', enum: DocumentStatus, default: DocumentStatus.PROCESSING, comment: '后台向量解析状态' })
   status: DocumentStatus;
 
+  @Column({ type: 'int', default: 0, comment: '解析任务已尝试次数' })
+  processingAttempts: number;
+
+  @Column({ type: 'int', default: 0, comment: '解析进度百分比' })
+  processingProgress: number;
+
+  @Column({ type: 'text', nullable: true, comment: '最近一次解析错误' })
+  processingError: string;
+
   @Column({ type: 'boolean', default: true, comment: '文档是否公开；当前产品策略为全部公开' })
   isPublic: boolean;
 

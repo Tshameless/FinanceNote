@@ -107,8 +107,11 @@
               </div>
               <div class="doc-card-footer">
                 <span :class="['status-badge', doc.status.toLowerCase()]">
-                  {{ doc.status === 'PROCESSED' ? '🟢 AI 向量已就绪' : '🟡 解析切块中' }}
+                  {{ doc.status === 'PROCESSED' ? '🟢 AI 向量已就绪' : doc.status === 'FAILED' ? '🔴 解析失败' : `🟡 解析中 ${doc.processingProgress || 0}%` }}
                 </span>
+                <el-tooltip v-if="doc.status === 'FAILED' && doc.processingError" :content="doc.processingError" placement="top">
+                  <span class="processing-error">查看错误</span>
+                </el-tooltip>
                 <el-button size="small" type="danger" text @click.stop="handleDeleteDoc(doc.id)">删除</el-button>
               </div>
             </div>

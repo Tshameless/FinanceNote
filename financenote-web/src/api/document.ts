@@ -12,6 +12,9 @@ export interface DocumentItem {
   reportQuarter?: string;
   author?: string;
   status: 'PROCESSING' | 'PROCESSED' | 'FAILED';
+  processingProgress?: number;
+  processingAttempts?: number;
+  processingError?: string;
   createdAt: string;
 }
 
