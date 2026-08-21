@@ -6,7 +6,7 @@
  * 2. 高亮划线坐标存取 (Annotations)
  */
 
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NoteEntity } from './entities/note.entity';
@@ -110,6 +110,13 @@ export class NoteService {
     }
     if (dto.pageNum < 1) {
       throw new ForbiddenException('页码必须从 1 开始');
+    }
+    const { x, y, width, height } = dto.rectCoords;
+    if (![x, y, width, height].every((value) => typeof value === 'number' && Number.isFinite(value))) {
+      throw new BadRequestException('批注坐标必须是有限数字');
+    }
+    if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > 1 || y + height > 1) {
+      throw new BadRequestException('批注坐标必须位于页面范围内');
     }
     const annotation = this.annotationRepository.create({
       userId,

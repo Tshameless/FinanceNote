@@ -3,6 +3,7 @@
  */
 
 export interface SourceInfo {
+  id?: string;
   pageNumber: number;
   snippet: string;
 }

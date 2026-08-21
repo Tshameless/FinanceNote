@@ -2,7 +2,7 @@
  * 笔记创建与高亮划线 DTO 校验类
  */
 
-import { IsString, IsOptional, IsArray, IsUUID, IsInt, IsObject, IsNotEmpty, MaxLength, ArrayMaxSize, IsHexColor, Min } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsUUID, IsInt, IsObject, IsNotEmpty, MaxLength, ArrayMaxSize, IsHexColor, Min, IsNumber, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PartialType } from '@nestjs/swagger';
 
@@ -52,7 +52,7 @@ export class CreateAnnotationDto {
 
   @ApiProperty({ description: '选区相对坐标对象', example: { x: 0.1, y: 0.2, width: 0.8, height: 0.05 } })
   @IsObject()
-  rectCoords: Record<string, any>;
+  rectCoords: { x: number; y: number; width: number; height: number };
 
   @ApiProperty({ description: '划选的原文片段', example: '经营活动产生的现金流量净额为 665.9 亿元' })
   @IsString()

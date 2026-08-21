@@ -163,7 +163,8 @@ export class DocumentService implements OnModuleInit {
         throw new Error(`物理文件不存在: ${filePath}`);
       }
 
-      const dataBuffer = new Uint8Array(fs.readFileSync(filePath));
+      // 解析任务在后台执行，使用异步读取避免阻塞 API 事件循环。
+      const dataBuffer = new Uint8Array(await fs.promises.readFile(filePath));
       const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
       const pdfDoc = await loadingTask.promise;
 
@@ -223,6 +224,8 @@ export class DocumentService implements OnModuleInit {
         }
       }
 
+      // 重试或服务恢复时保证任务幂等，不重复累积同一文档的切块。
+      await this.chunkRepository.delete({ docId });
       await this.chunkRepository.save(chunksToInsert);
 
       // 更新文档解析状态为完成 PROCESSED

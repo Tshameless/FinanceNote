@@ -84,7 +84,11 @@ export class DocumentController {
     }
 
     const extension = extname(file.originalname).toLowerCase();
-    const expectedFormat = extension === '.pdf' ? 'PDF' : 'EPUB';
+    const expectedFormat = extension === '.pdf' ? 'PDF' : extension === '.epub' ? 'EPUB' : null;
+    if (!expectedFormat) {
+      this.removeUploadedFile(file.path);
+      throw new BadRequestException('仅支持 PDF 文件');
+    }
     if (dto.fileFormat !== expectedFormat) {
       this.removeUploadedFile(file.path);
       throw new BadRequestException('文件扩展名与 fileFormat 不一致');

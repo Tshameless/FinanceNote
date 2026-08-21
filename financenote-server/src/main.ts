@@ -22,10 +22,19 @@ async function bootstrap() {
   
   // 创建 NestJS 应用程序实例
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
+
+  // 基础响应安全头；文件流仍由受保护控制器输出，不暴露上传目录。
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
 
   // 1. 开启 CORS 跨域支持 (为 Vue 3 前端提供安全访问)
   app.enableCors({
-    origin: (process.env.WEB_ORIGIN || 'http://localhost:5173').split(','),
+    origin: (process.env.WEB_ORIGIN || 'http://localhost:5173').split(',').map((origin) => origin.trim()),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

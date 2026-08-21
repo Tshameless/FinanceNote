@@ -3,8 +3,10 @@
  */
 
 import { createRouter, createWebHistory } from 'vue-router';
-import LoginView from '../views/LoginView.vue';
-import DashboardView from '../views/DashboardView.vue';
+import { defineAsyncComponent } from 'vue';
+
+const LoginView = defineAsyncComponent(() => import('../views/LoginView.vue'));
+const DashboardView = defineAsyncComponent(() => import('../views/DashboardView.vue'));
 
 const router = createRouter({
   history: createWebHistory(),

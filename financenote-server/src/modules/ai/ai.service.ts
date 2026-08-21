@@ -17,6 +17,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DocumentEntity } from '../document/entities/document.entity';
 
 export interface SourceReference {
+  id: string;
   pageNumber: number;
   content: string;
   metadata?: any;
@@ -43,6 +44,7 @@ export class AiService {
     this.openaiClient = new OpenAI({
       apiKey,
       baseURL,
+      timeout: 60000,
     });
 
     const embeddingKey = this.configService.get<string>('EMBEDDING_API_KEY');
@@ -64,9 +66,10 @@ export class AiService {
     currentPage?: number,
   ): Promise<SourceReference[]> {
     const results: SourceReference[] = [];
+    topK = Math.min(Math.max(Math.trunc(topK) || 5, 1), 20);
 
     const document = await this.documentRepository.findOne({ where: { id: docId } });
-    if (!document) return results;
+    if (!document || document.status !== 'PROCESSED') return results;
 
     // 优先逻辑 A：若用户传入了当前视口页码 currentPage (例如 42 页)，优先抽取 42 页及其前后 2 页切块
     if (currentPage && currentPage > 0) {
@@ -83,6 +86,7 @@ export class AiService {
         if (pageNearbyChunks && pageNearbyChunks.length > 0) {
           pageNearbyChunks.forEach((r: any) => {
             results.push({
+              id: String(r.id),
               pageNumber: Number(r.pageNumber || 1),
               content: r.content,
               metadata: r.metadata,
@@ -108,6 +112,7 @@ export class AiService {
           [docId, vector, topK],
         );
         (vectorResults || []).forEach((r: any) => results.push({
+          id: String(r.id),
           pageNumber: Number(r.pageNumber || 1),
           content: r.content,
           metadata: r.metadata,
@@ -137,8 +142,9 @@ export class AiService {
           if (kwResults && kwResults.length > 0) {
             kwResults.forEach((r: any) => {
               // 避免重复引入相同 chunk
-              if (results.length < topK && !results.some((existing) => existing.content === r.content)) {
+              if (results.length < topK && !results.some((existing) => existing.id === String(r.id))) {
                 results.push({
+                  id: String(r.id),
                   pageNumber: Number(r.pageNumber || 1),
                   content: r.content,
                   metadata: r.metadata,
@@ -165,6 +171,7 @@ export class AiService {
         );
         (fallbackResults || []).forEach((r: any) => {
           results.push({
+            id: String(r.id),
             pageNumber: Number(r.pageNumber || 1),
             content: r.content,
             metadata: r.metadata,
@@ -204,6 +211,7 @@ export class AiService {
     topK: number,
     subject: Subject<any>,
     currentPage?: number,
+    signal?: AbortSignal,
   ) {
     try {
       let sources: SourceReference[] = [];
@@ -213,6 +221,7 @@ export class AiService {
         subject.next({
           type: 'sources',
           sources: sources.map((s) => ({
+            id: s.id,
             pageNumber: s.pageNumber,
             snippet: s.content.slice(0, 80),
           })),
@@ -252,7 +261,8 @@ ${contextPrompt || '暂无查找到匹配切块'}`
         ],
         stream: true,
         temperature: 0.3,
-      });
+        max_tokens: 2000,
+      }, { signal });
 
       for await (const chunk of responseStream) {
         const text = chunk.choices[0]?.delta?.content || '';
