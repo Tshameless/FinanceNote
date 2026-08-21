@@ -2,7 +2,7 @@
 
 FinanceNote 是一款专为**投资者、财务分析师及深度阅读者**设计的个人研报与读书笔记工作台。
 
-系统整合了 **PDF 财报与书籍管理**、**精准坐标划线与笔记双向联动**、**受保护的流式阅读** 以及基于 **NestJS + PostgreSQL (pgvector) + 商用大模型 (DeepSeek / OpenAI)** 的带页码跳转 **AI 研读助手**。当前上传与解析仅支持 PDF，EPUB 暂未启用。
+系统整合了 **PDF/EPUB 财报与书籍管理**、**精准坐标划线与笔记双向联动**、**受保护的流式阅读** 以及基于 **NestJS + PostgreSQL (pgvector) + 商用大模型 (DeepSeek / OpenAI)** 的带页码跳转 **AI 研读助手**。PDF 支持分页阅读，EPUB 支持章节文本阅读与检索。
 
 ---
 
@@ -71,8 +71,19 @@ npm run start:dev
 所有写请求需要前端自动携带 `X-CSRF-Token`；健康检查地址为 `GET /api/health`，返回数据库、Redis 和文档队列状态。
 
 Embedding 未配置时系统仍可启动，但 AI 检索会自动回退到按页和关键词检索。配置 `EMBEDDING_API_KEY` 后，新上传文档会生成 1536 维向量并优先使用 pgvector 语义检索；已有文档需要重新处理才能补齐向量。
+本地未安装 pgvector 时设置 `PGVECTOR_ENABLED=false`，初始化脚本会使用 JSON embedding 列并自动回退关键词检索；生产环境建议安装 pgvector 并保持 `PGVECTOR_ENABLED=true`。
 
 配置 `REDIS_URL` 后，文档解析会使用 BullMQ 持久化队列并支持重试；未配置时保留单进程开发环境回退队列。
+
+本地启用 Redis（Docker Desktop 引擎运行后）：
+```bash
+docker compose up -d redis
+```
+确认容器健康后，在 `financenote-server/.env` 添加 `REDIS_URL=redis://localhost:6379`，然后重启后端。停止 Redis：
+```bash
+docker compose stop redis
+```
+Redis 数据保存在 `financenote-redis-data` 卷中，重启容器不会丢失队列数据。
 
 文档解析默认限制为 2000 页（可通过 `MAX_DOCUMENT_PAGES` 调整），文本切块会分批写入数据库，避免长文档把全部 chunk 长时间保留在内存中。
 单文档解析默认最长运行 15 分钟、单页最多处理 250000 个字符，可通过 `DOCUMENT_PROCESSING_TIMEOUT_MS` 和 `MAX_PAGE_TEXT_CHARS` 调整。
@@ -86,6 +97,20 @@ npm install
 npm run dev
 ```
 前端界面默认运行在 `http://localhost:5173`。
+
+### 4. 生产环境容器部署
+复制 `.env.example` 为部署环境变量文件（不要提交真实密钥），至少设置 `DB_PASSWORD` 和随机 `JWT_SECRET`，然后执行：
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+生产入口默认为 `http://localhost`（可用 `WEB_PORT` 修改）。服务启动会等待 PostgreSQL/Redis 健康后自动初始化表结构并执行迁移。查看日志：
+```bash
+docker compose -f docker-compose.prod.yml logs -f server
+```
+停止服务：
+```bash
+docker compose -f docker-compose.prod.yml down
+```
 
 ---
 

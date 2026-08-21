@@ -77,4 +77,10 @@ export class UserService {
   async validatePassword(rawPassword: string, passwordHash: string): Promise<boolean> {
     return bcrypt.compare(rawPassword, passwordHash);
   }
+
+  async updatePassword(user: UserEntity, rawPassword: string): Promise<void> {
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(rawPassword, salt);
+    await this.userRepository.save(user);
+  }
 }

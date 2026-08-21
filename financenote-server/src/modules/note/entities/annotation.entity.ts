@@ -14,14 +14,14 @@ export class AnnotationEntity {
   @Column({ type: 'int', comment: '所有者 User ID' })
   userId: number;
 
-  @Column({ type: 'varchar', length: 36, comment: '关联的文档 ID' })
+  @Column({ type: 'varchar', comment: '关联的文档 ID' })
   docId: string;
 
   @ManyToOne(() => DocumentEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'docId' })
   document: DocumentEntity;
 
-  @Column({ type: 'varchar', length: 36, nullable: true, comment: '关联的笔记 ID (可选)' })
+  @Column({ type: 'varchar', nullable: true, comment: '关联的笔记 ID (可选)' })
   noteId: string;
 
   @ManyToOne(() => NoteEntity, (note) => note.annotations, { onDelete: 'SET NULL', nullable: true })

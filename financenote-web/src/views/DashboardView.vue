@@ -38,9 +38,14 @@
           <el-avatar :size="32" icon="UserFilled" />
           <span class="username">{{ authStore.user?.username || '已登录用户' }}</span>
         </div>
-        <el-button size="small" type="danger" text @click="handleLogout">
-          <el-icon><SwitchButton /></el-icon> 退出
-        </el-button>
+        <div class="user-actions">
+          <el-button size="small" text @click="showPasswordDialog = true" title="修改密码">
+            <el-icon><Lock /></el-icon>
+          </el-button>
+          <el-button size="small" type="danger" text @click="handleLogout">
+            <el-icon><SwitchButton /></el-icon> 退出
+          </el-button>
+        </div>
       </div>
     </aside>
 
@@ -142,10 +147,12 @@
             <!-- 左侧：受保护的流式 PDF 阅读器 (支持划线选区与跳转高亮) -->
             <div class="pdf-pane">
               <PdfViewer
+                v-if="docStore.activeDocument.fileFormat === 'PDF'"
                 ref="pdfViewerRef"
                 :doc-id="docStore.activeDocument.id"
                 @on-add-annotation="handleAddAnnotation"
               />
+              <EpubViewer v-else :doc-id="docStore.activeDocument.id" />
             </div>
 
             <!-- 右侧：AI 研读 Copilot 抽屉 或 Markdown 笔记编辑器 -->
@@ -169,12 +176,12 @@
     </main>
 
     <!-- 上传文档模态框 Dialog -->
-    <el-dialog v-model="showUploadDialog" title="上传财报 PDF 或书籍 PDF" width="540px">
+    <el-dialog v-model="showUploadDialog" title="上传财报或书籍文件" width="540px">
       <el-form :model="uploadForm" label-position="top">
         <el-form-item label="文档类型">
           <el-radio-group v-model="uploadForm.docType">
             <el-radio label="FINANCIAL_REPORT">公司财报 (PDF)</el-radio>
-            <el-radio label="BOOK">深度书籍 (PDF)</el-radio>
+            <el-radio label="BOOK">深度书籍 (PDF / EPUB)</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -197,13 +204,31 @@
           </el-row>
         </template>
 
-        <el-form-item label="选择文件 (.pdf)">
-          <input type="file" accept=".pdf" @change="onFileChange" />
+        <el-form-item label="选择文件 (.pdf / .epub)">
+          <input type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" @change="onFileChange" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showUploadDialog = false">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="submitUpload">开始上传并处理</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showPasswordDialog" title="修改登录密码" width="420px" @closed="resetPasswordForm">
+      <el-form :model="passwordForm" label-position="top" @submit.prevent>
+        <el-form-item label="当前密码">
+          <el-input v-model="passwordForm.currentPassword" type="password" show-password autocomplete="current-password" />
+        </el-form-item>
+        <el-form-item label="新密码">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="new-password" />
+        </el-form-item>
+        <el-form-item label="确认新密码">
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password autocomplete="new-password" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPasswordDialog = false">取消</el-button>
+        <el-button type="primary" :loading="changingPassword" @click="submitPasswordChange">保存密码</el-button>
       </template>
     </el-dialog>
   </div>
@@ -228,6 +253,7 @@ import { useDocumentStore } from '../stores/documentStore';
 import { uploadDocumentApi, deleteDocumentApi, updateDocumentVisibilityApi, DocumentItem } from '../api/document';
 import { createAnnotationApi } from '../api/note';
 import PdfViewer from '../components/PdfViewer.vue';
+import EpubViewer from '../components/EpubViewer.vue';
 import AiDrawer from '../components/AiDrawer.vue';
 import NoteEditor from '../components/NoteEditor.vue';
 import EconomicsKnowledge from '../components/EconomicsKnowledge.vue';
@@ -241,8 +267,11 @@ const searchKeyword = ref<string>('');
 const rightPanel = ref<'ai' | 'note'>('ai');
 
 const showUploadDialog = ref<boolean>(false);
+const showPasswordDialog = ref<boolean>(false);
 const uploading = ref<boolean>(false);
+const changingPassword = ref<boolean>(false);
 const selectedFile = ref<File | null>(null);
+const passwordForm = ref({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
 const pdfViewerRef = ref<any>(null);
 const noteEditorRef = ref<any>(null);
@@ -329,7 +358,8 @@ async function submitUpload() {
   formData.append('file', selectedFile.value);
   formData.append('title', uploadForm.value.title || selectedFile.value.name);
   formData.append('docType', uploadForm.value.docType);
-  formData.append('fileFormat', 'PDF');
+  const fileFormat = /\.epub$/i.test(selectedFile.value.name) ? 'EPUB' : 'PDF';
+  formData.append('fileFormat', fileFormat);
   if (uploadForm.value.companyName) formData.append('companyName', uploadForm.value.companyName);
   if (uploadForm.value.stockCode) formData.append('stockCode', uploadForm.value.stockCode);
 
@@ -378,6 +408,34 @@ async function handleAddAnnotation(data: {
 function handleLogout() {
   authStore.logout();
   router.push('/login');
+}
+
+function resetPasswordForm() {
+  passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
+}
+
+async function submitPasswordChange() {
+  const { currentPassword, newPassword, confirmPassword } = passwordForm.value;
+  if (!currentPassword || !newPassword) {
+    ElMessage.warning('请填写当前密码和新密码');
+    return;
+  }
+  if (newPassword.length < 6) {
+    ElMessage.warning('新密码至少需要 6 个字符');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    ElMessage.warning('两次输入的新密码不一致');
+    return;
+  }
+  changingPassword.value = true;
+  try {
+    await authStore.changePassword(currentPassword, newPassword);
+    ElMessage.success('密码修改成功');
+    showPasswordDialog.value = false;
+  } finally {
+    changingPassword.value = false;
+  }
 }
 </script>
 

@@ -8,7 +8,7 @@ export class ConversationEntity {
   @Column({ type: 'int' })
   userId: number;
 
-  @Column({ type: 'varchar', length: 36, nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   docId: string;
 
   @Column({ type: 'varchar', length: 255 })

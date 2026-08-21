@@ -31,7 +31,7 @@ export interface ConversationContextMessage {
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private openaiClient: OpenAI;
+  private openaiClient: OpenAI | null;
   private embeddingClient: OpenAI | null;
 
   constructor(
@@ -41,16 +41,14 @@ export class AiService {
     private documentRepository: Repository<DocumentEntity>,
   ) {
     const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
-    if (!apiKey) {
-      throw new Error('DEEPSEEK_API_KEY 未配置');
-    }
     const baseURL = this.configService.get<string>('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1';
 
-    this.openaiClient = new OpenAI({
-      apiKey,
-      baseURL,
-      timeout: 60000,
-    });
+    this.openaiClient = apiKey
+      ? new OpenAI({ apiKey, baseURL, timeout: 60000 })
+      : null;
+    if (!this.openaiClient) {
+      this.logger.warn('DEEPSEEK_API_KEY 未配置，AI 对话功能暂不可用，但服务仍可启动。');
+    }
 
     const embeddingKey = this.configService.get<string>('EMBEDDING_API_KEY');
     this.embeddingClient = embeddingKey
@@ -262,6 +260,13 @@ ${contextPrompt || '暂无查找到匹配切块'}`
         : `你是一名精通金融学、微宏观经济学与财报研读的资深 AI 专家助手。请结合经济学原理、商业模式护城河与财报分析视角，回答用户的提问，保持专业、条理清晰并多使用 Markdown 列表结构。`;
 
       // Step 3: 调用商用大模型流式输出
+      if (!this.openaiClient) {
+        subject.next({ type: 'text', content: 'AI 服务尚未配置 DEEPSEEK_API_KEY，当前仅可使用文档检索功能。' });
+        subject.next({ type: 'done' });
+        subject.complete();
+        return;
+      }
+
       // DeepSeek 的 OpenAI 兼容端点默认使用 deepseek-chat；部署到其他供应商时通过 AI_MODEL_NAME 覆盖。
       const modelName = this.configService.get<string>('AI_MODEL_NAME', 'deepseek-chat');
       // 只携带最近几轮对话，并限制单条长度，避免历史消息耗尽模型上下文窗口。

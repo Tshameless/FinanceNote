@@ -22,6 +22,11 @@ async function migrate() {
     const migrationDir = path.join(__dirname, 'migrations');
     const files = fs.readdirSync(migrationDir).filter((file) => file.endsWith('.sql')).sort();
     for (const file of files) {
+      if (file === '001-enable-pgvector.sql' && process.env.PGVECTOR_ENABLED === 'false') {
+        await client.query('INSERT INTO schema_migrations(version) VALUES ($1) ON CONFLICT DO NOTHING', [file]);
+        console.log(`Skipped migration ${file} because PGVECTOR_ENABLED=false`);
+        continue;
+      }
       const existing = await client.query('SELECT 1 FROM schema_migrations WHERE version = $1', [file]);
       if (existing.rowCount) continue;
       await client.query(fs.readFileSync(path.join(migrationDir, file), 'utf8'));

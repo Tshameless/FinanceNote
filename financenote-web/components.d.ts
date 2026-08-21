@@ -30,6 +30,7 @@ declare module 'vue' {
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
+    EpubViewer: typeof import('./src/components/EpubViewer.vue')['default']
     NoteEditor: typeof import('./src/components/NoteEditor.vue')['default']
     PdfViewer: typeof import('./src/components/PdfViewer.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

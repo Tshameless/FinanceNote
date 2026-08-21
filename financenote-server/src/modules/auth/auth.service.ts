@@ -10,7 +10,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../user/user.service';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto';
 import { UserEntity } from '../user/user.entity';
 
 @Injectable()
@@ -72,6 +72,17 @@ export class AuthService {
       },
       accessToken: token,
     };
+  }
+
+  async changePassword(user: UserEntity, dto: ChangePasswordDto): Promise<void> {
+    const matches = await this.userService.validatePassword(dto.currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('当前密码不正确');
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new UnauthorizedException('新密码不能与当前密码相同');
+    }
+    await this.userService.updatePassword(user, dto.newPassword);
   }
 
   /**

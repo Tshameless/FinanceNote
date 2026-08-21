@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { loginApi, registerApi, getProfileApi, logoutApi, UserProfile } from '../api/auth';
+import { loginApi, registerApi, getProfileApi, logoutApi, changePasswordApi, UserProfile } from '../api/auth';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>(sessionStorage.getItem('fn_authenticated') === '1' ? 'cookie' : '');
@@ -31,6 +31,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function changePassword(currentPassword: string, newPassword: string) {
+    return changePasswordApi({ currentPassword, newPassword });
+  }
+
   async function logout(shouldRedirect = false) {
     if (token.value) {
       try {
@@ -54,6 +58,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     fetchProfile,
+    changePassword,
     logout,
   };
 });

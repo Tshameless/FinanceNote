@@ -22,3 +22,7 @@ export function getProfileApi() {
 export function logoutApi() {
   return request.post<{ message: string }>('/auth/logout') as unknown as Promise<{ message: string }>;
 }
+
+export function changePasswordApi(data: { currentPassword: string; newPassword: string }) {
+  return request.patch<{ message: string }>('/auth/password', data) as unknown as Promise<{ message: string }>;
+}

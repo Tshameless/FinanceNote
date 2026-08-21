@@ -47,3 +47,8 @@ export function retryDocumentApi(id: string) {
 export function cancelDocumentProcessingApi(id: string) {
   return request.post<DocumentItem>(`/documents/${id}/cancel-processing`) as unknown as Promise<DocumentItem>;
 }
+
+export interface EpubChapter { pageNumber: number; title: string; content: string }
+export function getEpubChaptersApi(id: string) {
+  return request.get<{ documentId: string; title: string; chapters: EpubChapter[] }>(`/documents/${id}/epub`) as unknown as Promise<{ documentId: string; title: string; chapters: EpubChapter[] }>;
+}

@@ -19,7 +19,7 @@ export class NoteEntity {
   @JoinColumn({ name: 'userId' })
   user: UserEntity;
 
-  @Column({ type: 'varchar', length: 36, nullable: true, comment: '关联的文档 ID (可选)' })
+  @Column({ type: 'varchar', nullable: true, comment: '关联的文档 ID (可选)' })
   docId: string;
 
   @ManyToOne(() => DocumentEntity, (doc) => doc.notes, { onDelete: 'SET NULL', nullable: true })

@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-financenote}
+      POSTGRES_USER: ${DB_USERNAME:-financenote}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - financenote-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - financenote-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build: ./financenote-server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-financenote}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_DATABASE: ${DB_DATABASE:-financenote}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      AI_MODEL_NAME: ${AI_MODEL_NAME:-deepseek-chat}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      PGVECTOR_ENABLED: ${PGVECTOR_ENABLED:-true}
+      PGVECTOR_REQUIRED: ${PGVECTOR_REQUIRED:-true}
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /app/uploads/documents
+      MAX_DOCUMENT_PAGES: ${MAX_DOCUMENT_PAGES:-2000}
+      MAX_USER_STORAGE_BYTES: ${MAX_USER_STORAGE_BYTES:-1073741824}
+      DOCUMENT_PROCESSING_TIMEOUT_MS: ${DOCUMENT_PROCESSING_TIMEOUT_MS:-900000}
+      MAX_PAGE_TEXT_CHARS: ${MAX_PAGE_TEXT_CHARS:-250000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - financenote-uploads:/app/uploads/documents
+
+  web:
+    build: ./financenote-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - server
+
+volumes:
+  financenote-postgres-data:
+  financenote-redis-data:
+  financenote-uploads:

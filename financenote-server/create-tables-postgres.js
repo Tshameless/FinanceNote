@@ -17,7 +17,16 @@ async function createTables() {
   try {
     await client.query('BEGIN');
     await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+    let embeddingColumn = 'embedding JSON';
+    if (process.env.PGVECTOR_ENABLED !== 'false') {
+      try {
+        await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+        embeddingColumn = 'embedding vector(1536)';
+      } catch (error) {
+        if (process.env.PGVECTOR_REQUIRED === 'true') throw error;
+        console.warn('pgvector 不可用，将使用 JSON embedding 列并回退关键词检索。');
+      }
+    }
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -58,7 +67,7 @@ async function createTables() {
         "pageNumber" INTEGER NOT NULL,
         content TEXT NOT NULL,
         metadata JSON,
-        embedding vector(1536),
+         ${embeddingColumn},
         "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
@@ -106,10 +115,6 @@ async function createTables() {
 
       CREATE INDEX IF NOT EXISTS document_chunks_doc_page_idx
         ON document_chunks ("docId", "pageNumber");
-      CREATE INDEX IF NOT EXISTS document_chunks_embedding_hnsw_idx
-        ON document_chunks USING hnsw (embedding vector_cosine_ops)
-        WHERE embedding IS NOT NULL;
-
       CREATE INDEX IF NOT EXISTS conversations_user_doc_updated_idx
         ON conversations ("userId", "docId", "updatedAt" DESC);
       CREATE INDEX IF NOT EXISTS conversation_messages_conversation_created_idx

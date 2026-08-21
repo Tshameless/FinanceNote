@@ -5,12 +5,17 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { DocumentEntity } from './document.entity';
 
+const embeddingColumn: any =
+  process.env.PGVECTOR_ENABLED === 'false'
+    ? { type: 'json', nullable: true, comment: '1536 维 Embedding 向量' }
+    : { type: 'vector' as any, length: 1536, nullable: true, comment: '1536 维 Embedding 向量' };
+
 @Entity('document_chunks')
 export class DocumentChunkEntity {
   @PrimaryGeneratedColumn('uuid', { comment: '切块 Chunk UUID' })
   id: string;
 
-  @Column({ type: 'varchar', length: 36, comment: '关联的文档 ID' })
+  @Column({ type: 'varchar', comment: '关联的文档 ID' })
   docId: string;
 
   @ManyToOne(() => DocumentEntity, (doc) => doc.chunks, { onDelete: 'CASCADE' })
@@ -26,7 +31,7 @@ export class DocumentChunkEntity {
   @Column({ type: 'json', nullable: true, comment: '额外元数据 (例如章节标题等)' })
   metadata: Record<string, any>;
 
-  @Column({ type: 'vector', length: 1536, nullable: true, comment: '1536 维 Embedding 向量' })
+  @Column(embeddingColumn)
   embedding: number[];
 
   @CreateDateColumn({ comment: '切块时间' })

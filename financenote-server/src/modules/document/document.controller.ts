@@ -91,21 +91,20 @@ export class DocumentController {
     const expectedFormat = extension === '.pdf' ? 'PDF' : extension === '.epub' ? 'EPUB' : null;
     if (!expectedFormat) {
       this.removeUploadedFile(file.path);
-      throw new BadRequestException('仅支持 PDF 文件');
+      throw new BadRequestException('仅支持 PDF 或 EPUB 文件');
     }
     if (dto.fileFormat !== expectedFormat) {
       this.removeUploadedFile(file.path);
       throw new BadRequestException('文件扩展名与 fileFormat 不一致');
     }
-    if (expectedFormat === 'EPUB') {
-      this.removeUploadedFile(file.path);
-      throw new BadRequestException('EPUB 解析尚未启用，请上传 PDF 文件');
-    }
-
-    // 扩展名和 MIME 都可伪造，检查 PDF 文件头，避免把任意文件交给解析器。
-    if (!this.isPdfFile(file.path)) {
+    // 扩展名和 MIME 都可伪造，分别检查 PDF/EPUB 文件头，避免把任意文件交给解析器。
+    if (expectedFormat === 'PDF' && !this.isPdfFile(file.path)) {
       this.removeUploadedFile(file.path);
       throw new BadRequestException('文件内容不是有效的 PDF');
+    }
+    if (expectedFormat === 'EPUB' && !this.isEpubFile(file.path)) {
+      this.removeUploadedFile(file.path);
+      throw new BadRequestException('文件内容不是有效的 EPUB');
     }
 
     try {
@@ -146,6 +145,12 @@ export class DocumentController {
   ) {
     await this.documentService.removeDocument(id, user.id);
     return { message: '文档成功删除' };
+  }
+
+  @Get(':id/epub')
+  @ApiOperation({ summary: '获取 EPUB 章节文本（受保护）' })
+  async getEpubChapters(@Param('id') id: string, @CurrentUser() user: UserEntity) {
+    return this.documentService.getEpubChapters(id, user.id);
   }
 
   @Patch(':id/visibility')
@@ -202,6 +207,20 @@ export class DocumentController {
       const header = Buffer.alloc(5);
       const bytesRead = fs.readSync(handle, header, 0, header.length, 0);
       return bytesRead === 5 && header.toString('ascii') === '%PDF-';
+    } catch {
+      return false;
+    } finally {
+      if (handle !== undefined) fs.closeSync(handle);
+    }
+  }
+
+  private isEpubFile(filePath: string): boolean {
+    let handle: number | undefined;
+    try {
+      handle = fs.openSync(filePath, 'r');
+      const header = Buffer.alloc(4);
+      const bytesRead = fs.readSync(handle, header, 0, header.length, 0);
+      return bytesRead === 4 && header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04;
     } catch {
       return false;
     } finally {

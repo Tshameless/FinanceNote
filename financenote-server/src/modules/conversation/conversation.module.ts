@@ -4,9 +4,10 @@ import { ConversationEntity } from './entities/conversation.entity';
 import { ConversationMessageEntity } from './entities/message.entity';
 import { ConversationService } from './conversation.service';
 import { ConversationController } from './conversation.controller';
+import { DocumentEntity } from '../document/entities/document.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ConversationEntity, ConversationMessageEntity])],
+  imports: [TypeOrmModule.forFeature([ConversationEntity, ConversationMessageEntity, DocumentEntity])],
   providers: [ConversationService],
   controllers: [ConversationController],
   exports: [ConversationService],

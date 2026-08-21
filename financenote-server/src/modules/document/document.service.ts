@@ -17,6 +17,8 @@ import { UploadDocumentDto } from './dto/upload-document.dto';
 import { ConfigService } from '@nestjs/config';
 import { OpenAI } from 'openai';
 import * as fs from 'fs';
+import { extname } from 'path';
+const EPub = require('epub');
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
@@ -116,6 +118,20 @@ export class DocumentService implements OnModuleInit {
     }
 
     return doc;
+  }
+
+  async getEpubChapters(id: string, userId: number) {
+    const doc = await this.findOne(id, userId);
+    if (doc.fileFormat !== 'EPUB') throw new ForbiddenException('该文档不是 EPUB 文件');
+    const chunks = await this.chunkRepository.find({ where: { docId: id }, order: { pageNumber: 'ASC', id: 'ASC' } });
+    const chapters = new Map<number, { pageNumber: number; title: string; content: string }>();
+    for (const chunk of chunks) {
+      const title = typeof chunk.metadata?.chapter === 'string' ? chunk.metadata.chapter : `第 ${chunk.pageNumber} 章`;
+      const current = chapters.get(chunk.pageNumber);
+      if (current) current.content += `\n${chunk.content}`;
+      else chapters.set(chunk.pageNumber, { pageNumber: chunk.pageNumber, title, content: chunk.content });
+    }
+    return { documentId: doc.id, title: doc.title, chapters: [...chapters.values()] };
   }
 
   /**
@@ -246,6 +262,11 @@ export class DocumentService implements OnModuleInit {
         throw new Error(`物理文件不存在: ${filePath}`);
       }
 
+      if (extname(filePath).toLowerCase() === '.epub') {
+        await this.processEpubDocument(docId, filePath, processingDeadline);
+        return;
+      }
+
       // 解析任务在后台执行，使用异步读取避免阻塞 API 事件循环。
       const dataBuffer = new Uint8Array(await fs.promises.readFile(filePath));
       const pdfjsLib = await this.loadPdfJs();
@@ -373,6 +394,57 @@ export class DocumentService implements OnModuleInit {
         this.logger.warn(`释放 PDF 解析资源失败 ${docId}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
       }
     }
+  }
+
+  private async processEpubDocument(docId: string, filePath: string, processingDeadline: number): Promise<void> {
+    const epub = await new Promise<any>((resolve, reject) => {
+      const parser = new EPub(filePath);
+      parser.once('error', reject);
+      parser.once('end', () => resolve(parser));
+      parser.parse();
+    });
+    const flow = Array.isArray(epub.flow) ? epub.flow : [];
+    const maxPages = this.configService.get<number>('MAX_DOCUMENT_PAGES', 2000);
+    if (flow.length > maxPages) throw new Error(`EPUB 章节数超过限制（最多 ${maxPages} 章）`);
+    await this.chunkRepository.delete({ docId });
+    const embeddingClient = this.getEmbeddingClient();
+    const embeddingModel = this.configService.get<string>('EMBEDDING_MODEL', 'text-embedding-3-small');
+    let persistedChunks = 0;
+    for (let index = 0; index < flow.length; index += 1) {
+      if (Date.now() > processingDeadline) throw new Error('文档解析超过最大处理时间');
+      if (this.cancelledJobs.has(docId)) throw new Error('文档处理已取消');
+      const chapter = flow[index];
+      const html = await new Promise<string>((resolve, reject) => {
+        epub.getChapter(chapter.id, (error: Error | null, text: string) => error ? reject(error) : resolve(text || ''));
+      });
+      const text = this.stripHtml(html).slice(0, Number(this.configService.get<string>('MAX_PAGE_TEXT_CHARS', '250000')));
+      if (text.trim()) {
+        const chunks = this.splitTextIntoChunks(text, 600).map((content) => this.chunkRepository.create({
+          docId,
+          pageNumber: index + 1,
+          content,
+          metadata: { chapter: chapter.title || `第 ${index + 1} 章`, chapterIndex: index + 1, length: content.length },
+        }));
+        if (embeddingClient) {
+          try {
+            const response = await embeddingClient.embeddings.create({ model: embeddingModel, input: chunks.map((chunk) => chunk.content.slice(0, 2000)) });
+            response.data.forEach((item, itemIndex) => { chunks[itemIndex].embedding = item.embedding; });
+          } catch (error) {
+            this.logger.warn(`[后台任务] EPUB embedding 生成失败，将使用关键词检索: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        await this.chunkRepository.save(chunks);
+        persistedChunks += chunks.length;
+      }
+      await this.docRepository.update(docId, { processingProgress: Math.floor(((index + 1) / Math.max(flow.length, 1)) * 100) });
+    }
+    if (!persistedChunks) throw new Error('EPUB 未解析出可检索文本');
+    await this.docRepository.update(docId, { status: DocumentStatus.PROCESSED, processingProgress: 100, processingError: null });
+    this.logger.log(`[后台任务] EPUB 文档 ${docId} 解析完成，共切出 ${persistedChunks} 个片段`);
+  }
+
+  private stripHtml(value: string): string {
+    return value.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/\s+/g, ' ').trim();
   }
 
   private async assertDocumentProcessing(docId: string): Promise<void> {

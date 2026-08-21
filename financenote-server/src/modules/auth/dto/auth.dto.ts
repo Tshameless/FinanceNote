@@ -41,3 +41,18 @@ export class LoginDto {
   @MaxLength(128, { message: '密码不能超过 128 个字符' })
   password: string;
 }
+
+export class ChangePasswordDto {
+  @ApiProperty({ description: '当前密码', example: 'Password123!' })
+  @IsString({ message: '当前密码必须为字符串' })
+  @IsNotEmpty({ message: '当前密码不能为空' })
+  @MaxLength(128, { message: '当前密码不能超过 128 个字符' })
+  currentPassword: string;
+
+  @ApiProperty({ description: '新密码', example: 'NewPassword123!' })
+  @IsString({ message: '新密码必须为字符串' })
+  @IsNotEmpty({ message: '新密码不能为空' })
+  @MinLength(6, { message: '新密码最少需要 6 个字符' })
+  @MaxLength(128, { message: '新密码不能超过 128 个字符' })
+  newPassword: string;
+}
